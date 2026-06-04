@@ -73,6 +73,13 @@ trigger_to_bottom_z:  (mm)
       running TOOL_CALIBRATE_PROBE_OFFSET and substracting the result from your current probe offset.
     - decrease if the nozzle is too high, increase if too low.
 
+tool_probe_calibrate_bed_x: (mm)
+tool_probe_calibrate_bed_y: (mm)
+    Optional bed coordinates where the active tool probe should trigger during
+    TOOL_CALIBRATE_PROBE_OFFSET. Configure both values together.
+    The toolhead move is adjusted by the active probe's x_offset/y_offset so
+    these coordinates describe the probe contact point, not the nozzle position.
+
 probe: probe 
      (optional name of the nozzle probe to use)
 ```
@@ -97,6 +104,20 @@ All probing moves and final offsets will be printed in the console.
 - Do the first two steps from above to ensure the probe is precisely under the nozzle.
 
 - Run TOOL_CALIBRATE_PROBE_OFFSET - to measure Z offset from nozzle triggering the probe to tool's nozzle probe activating.
+
+If `tool_probe_calibrate_bed_x` and `tool_probe_calibrate_bed_y` are configured,
+the command measures the nozzle against the calibration probe, then lifts and
+moves so the active tool probe triggers at that bed position. The move is checked
+against the printer X/Y limits before probing, including the active probe's
+configured X/Y offsets.
+
+When using a separate bed point, run this calibration before generating/loading a
+bed mesh, or otherwise in a deliberate known compensation state. Bed tilt, gantry
+tilt, or mesh state can affect the calculated offset because the nozzle reference
+and tool probe trigger are measured at different X/Y locations.
+
+Choose a bed point that is clear of clips, docks, buckets, wipers, screws, and
+any other machine-specific obstructions.
 
 All probing moves and final offsets will be printed in the console.
 
