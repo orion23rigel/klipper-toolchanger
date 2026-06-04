@@ -172,7 +172,8 @@ class ToolsCalibrate:
         # now move down with the tool probe
         probe_session = probe.start_probe_session(gcmd)
         probe_session.run_probe(gcmd)
-        probe_z = probe_session.pull_probed_results()[0][2]
+        probe_result = probe_session.pull_probed_results()[0]
+        probe_z = probe_result.test_z
         probe_session.end_probe_session()
         if self.tool_probe_calibrate_bed_x is not None:
             toolhead.manual_move([None, None, probe_z + self.final_lift_z],
