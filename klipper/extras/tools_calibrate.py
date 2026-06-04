@@ -30,8 +30,8 @@ class ToolsCalibrate:
                                                           config, 'z'))
         self.probe_name = config.get('probe', 'probe')
         self.travel_speed = config.getfloat('travel_speed', 10.0, above=0.)
-        self.tool_probe_calibrate_travel_speed = config.getfloat(
-            'tool_probe_calibrate_travel_speed', self.travel_speed, above=0.)
+        self.tool_probe_calibrate_bed_xy_speed = config.getfloat(
+            'tool_probe_calibrate_bed_xy_speed', self.travel_speed, above=0.)
         self.spread = config.getfloat('spread', 5.0)
         self.lower_z = config.getfloat('lower_z', 0.5)
         self.lift_z = config.getfloat('lift_z', 1.0)
@@ -216,7 +216,7 @@ class ToolsCalibrate:
         toolhead.manual_move([None, None, nozzle_z + self.final_lift_z],
                              self.lift_speed)
         toolhead.manual_move([target_pos[0], target_pos[1], None],
-                             self.tool_probe_calibrate_travel_speed)
+                             self.tool_probe_calibrate_bed_xy_speed)
 
     def _get_xy_limits(self, toolhead, gcmd):
         curtime = self.printer.get_reactor().monotonic()

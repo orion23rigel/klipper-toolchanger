@@ -80,7 +80,7 @@ tool_probe_calibrate_bed_y: (mm)
     The toolhead move is adjusted by the active probe's x_offset/y_offset so
     these coordinates describe the probe contact point, not the nozzle position.
 
-tool_probe_calibrate_travel_speed: (mm/s)
+tool_probe_calibrate_bed_xy_speed: (mm/s)
     Optional move speed from the calibration probe to the configured
     tool_probe_calibrate_bed_x/y position. Defaults to travel_speed.
 
