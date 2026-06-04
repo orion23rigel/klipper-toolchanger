@@ -80,6 +80,10 @@ tool_probe_calibrate_bed_y: (mm)
     The toolhead move is adjusted by the active probe's x_offset/y_offset so
     these coordinates describe the probe contact point, not the nozzle position.
 
+tool_probe_calibrate_travel_speed: (mm/s)
+    Optional move speed from the calibration probe to the configured
+    tool_probe_calibrate_bed_x/y position. Defaults to travel_speed.
+
 probe: probe 
      (optional name of the nozzle probe to use)
 ```
@@ -112,7 +116,8 @@ If `tool_probe_calibrate_bed_x` and `tool_probe_calibrate_bed_y` are configured,
 the command measures the nozzle against the calibration probe, then lifts and
 moves so the active tool probe triggers at that bed position. The move is checked
 against the printer X/Y limits before probing, including the active probe's
-configured X/Y offsets.
+configured X/Y offsets. After bed probing, the toolhead lifts by `final_lift_z`
+and remains at the bed probe X/Y position.
 
 When using a separate bed point, run this calibration before generating/loading a
 bed mesh, or otherwise in a deliberate known compensation state. Bed tilt, gantry
