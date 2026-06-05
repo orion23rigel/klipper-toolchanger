@@ -223,23 +223,6 @@ class EndstopRouter:
 
     def set_active_mcu(self, mcu_probe):
         self.active_mcu = mcu_probe
-        # Update Wrappers
-        if self.active_mcu:
-            self.get_mcu = self.active_mcu.get_mcu
-            self.home_start = self.active_mcu.home_start
-            self.home_wait = self.active_mcu.home_wait
-            self.multi_probe_begin = self.active_mcu.multi_probe_begin
-            self.multi_probe_end = self.active_mcu.multi_probe_end
-            self.probe_prepare = self.active_mcu.probe_prepare
-            self.probe_finish = self.active_mcu.probe_finish
-        else:
-            self.get_mcu = self.on_error
-            self.home_start = self.on_error
-            self.home_wait = self.on_error
-            self.multi_probe_begin = self.on_error
-            self.multi_probe_end = self.on_error
-            self.probe_prepare = self.on_error
-            self.probe_finish = self.on_error
 
     def add_stepper(self, stepper):
         self._steppers.append(stepper)
@@ -248,8 +231,6 @@ class EndstopRouter:
     def get_steppers(self):
         return list(self._steppers)
 
-    def on_error(self, *args, **kwargs):
-        raise self.printer.command_error("Cannot interact with probe - no active tool probe.")
     def query_endstop(self, print_time):
         if not self.active_mcu:
             raise self.printer.command_error("Cannot query endstop - no active tool probe.")
