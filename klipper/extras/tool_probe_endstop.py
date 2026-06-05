@@ -26,10 +26,11 @@ class ToolProbeEndstop:
         self.probe_offsets = self.probe
         self.param_helper = self.probe
         self.cmd_helper = probe.ProbeCommandHelper(config, self, self.mcu_probe.query_endstop)
-        self.homing_helper = probe.HomingViaProbeHelper(
-            config, self.mcu_probe, self.probe_offsets, self.param_helper)
-        self.probe_session = probe.ProbeSessionHelper(
-            config, self.param_helper, self.homing_helper.start_probe_session)
+        # HomingViaProbeHelper is now a thin wrapper that only registers z_virtual_endstop
+        probe.HomingViaProbeHelper(
+            config, self.probe_offsets.get_offsets()[2], self.mcu_probe.query_endstop)
+        self.probe_session = probe.SampleAveragingHelper(
+            config, self.param_helper, self.mcu_probe.start_probe_session)
 
         # Emulate the probe object, since others rely on this.
         if self.printer.lookup_object('probe', default=None):
@@ -200,14 +201,10 @@ class ProbeRouter:
         if not self.active_probe:
             return  0.0, 0.0, 0.0
         return self.active_probe.probe_offsets.get_offsets(*args, **kwargs)
-    def create_probe_result(self, *args, **kwargs):
-        if not self.active_probe:
-            raise self.printer.command_error("Cannot query endstop - no active tool probe.")
-        return self.active_probe.probe_offsets.create_probe_result(*args, **kwargs)
     # Param helper
     def get_probe_params(self, *args, **kwargs):
         if not self.active_probe:
-            raise self.printer.command_error("Cannot query endstop - no active tool probe.")
+            raise self.printer.command_error("Cannot query probe params - no active tool probe.")
         return self.active_probe.param_helper.get_probe_params(*args, **kwargs)
 
 # Routes commands to the selected tool probe endstop.
@@ -263,6 +260,11 @@ class EndstopRouter:
             # Report 0 and fix up in the homing sequence
             return 0.0
         return self.active_mcu.get_position_endstop()
+
+    def start_probe_session(self, gcmd):
+        if not self.active_mcu:
+            raise self.printer.command_error("Cannot start probe session - no active tool probe.")
+        return self.active_mcu.start_probe_session(gcmd)
 
 def load_config(config):
     return ToolProbeEndstop(config)
