@@ -49,6 +49,9 @@ class ToolsCalibrate:
             raise config.error(
                 "Both tool_probe_calibrate_bed_x and "
                 "tool_probe_calibrate_bed_y must be configured together")
+        if self.tool_probe_calibrate_bed_x is not None:
+            self.printer.register_event_handler(
+                "klippy:connect", self._handle_connect)
         self.sensor_location = None
         self.last_result = [0., 0., 0.]
         self.last_probe_offset = 0.
@@ -195,44 +198,73 @@ class ToolsCalibrate:
             toolhead.move(start_pos, self.travel_speed)
             toolhead.set_position(start_pos)
 
+    def _handle_connect(self):
+        toolhead = self.printer.lookup_object('toolhead')
+        probe = self.printer.lookup_object(self.probe_name)
+        self._validate_tool_probe_calibrate_bed_position(
+            toolhead, probe, self.printer.config_error)
+
     def _move_to_tool_probe_calibrate_bed_position(self, toolhead, probe, gcmd,
                                                    nozzle_z):
-        bed_pos = [self.tool_probe_calibrate_bed_x,
-                   self.tool_probe_calibrate_bed_y]
-        x_min, y_min, x_max, y_max = self._get_xy_limits(toolhead, gcmd)
-        self._check_xy_limits(
-            gcmd, bed_pos,
-            "tool_probe_calibrate_bed_x/y is outside printer X/Y limits: "
-            "probe contact point X=%.3f Y=%.3f, limits X=%.3f..%.3f "
-            "Y=%.3f..%.3f",
-            x_min, y_min, x_max, y_max)
-        offsets = probe.get_offsets(gcmd)
-        target_pos = [bed_pos[0] - offsets[0], bed_pos[1] - offsets[1]]
-        self._check_xy_limits(
-            gcmd, target_pos,
-            "tool probe calibration move is outside printer X/Y limits after "
-            "applying probe offsets: toolhead target X=%.3f Y=%.3f, "
-            "probe offsets X=%.3f Y=%.3f, limits X=%.3f..%.3f Y=%.3f..%.3f",
-            offsets[0], offsets[1], x_min, y_min, x_max, y_max)
+        target_pos = self._validate_tool_probe_calibrate_bed_position(
+            toolhead, probe, gcmd.error)
         toolhead.manual_move([None, None, nozzle_z + self.final_lift_z],
                              self.lift_speed)
         toolhead.manual_move([target_pos[0], target_pos[1], None],
                              self.tool_probe_calibrate_bed_xy_speed)
 
-    def _get_xy_limits(self, toolhead, gcmd):
+    def _validate_tool_probe_calibrate_bed_position(self, toolhead, probe,
+                                                    error):
+        x_min, y_min, x_max, y_max = self._get_xy_limits(toolhead, error)
+        bed_pos = [self.tool_probe_calibrate_bed_x,
+                   self.tool_probe_calibrate_bed_y]
+        self._check_xy_limits(
+            error, bed_pos,
+            "tool_probe_calibrate_bed_x/y is outside printer X/Y limits: "
+            "probe contact point X=%.3f Y=%.3f, limits X=%.3f..%.3f "
+            "Y=%.3f..%.3f",
+            x_min, y_min, x_max, y_max)
+        probes = getattr(probe, 'probes', None)
+        if probes:
+            for tool_probe in probes:
+                self._validate_tool_probe_target(tool_probe, bed_pos, error,
+                                                 x_min, y_min, x_max, y_max)
+        offsets = probe.get_offsets()
+        return self._validate_tool_probe_target(
+            probe, bed_pos, error, x_min, y_min, x_max, y_max, offsets)
+
+    def _validate_tool_probe_target(self, probe, bed_pos, error,
+                                    x_min, y_min, x_max, y_max, offsets=None):
+        if offsets is None:
+            offsets = probe.probe_offsets.get_offsets()
+        target_pos = [bed_pos[0] - offsets[0], bed_pos[1] - offsets[1]]
+        probe_name = getattr(probe, 'name', self.probe_name)
+        tool_number = getattr(probe, 'tool_number', None)
+        if tool_number is not None:
+            probe_name = "%s for tool %d" % (probe_name, tool_number)
+        self._check_xy_limits(
+            error, target_pos,
+            "tool probe calibration move is outside printer X/Y limits after "
+            "applying probe offsets: toolhead target X=%.3f Y=%.3f for %s, "
+            "probe contact point X=%.3f Y=%.3f, probe offsets X=%.3f Y=%.3f, "
+            "limits X=%.3f..%.3f Y=%.3f..%.3f",
+            probe_name, bed_pos[0], bed_pos[1], offsets[0], offsets[1],
+            x_min, y_min, x_max, y_max)
+        return target_pos
+
+    def _get_xy_limits(self, toolhead, error):
         curtime = self.printer.get_reactor().monotonic()
         kin_status = toolhead.get_kinematics().get_status(curtime)
         if 'axis_minimum' not in kin_status or 'axis_maximum' not in kin_status:
-            raise gcmd.error(
-                "Tools calibrate only works with cartesian kinematics")
+            raise error("Tools calibrate only works with cartesian kinematics")
         return (kin_status['axis_minimum'][0], kin_status['axis_minimum'][1],
                 kin_status['axis_maximum'][0], kin_status['axis_maximum'][1])
 
-    def _check_xy_limits(self, gcmd, pos, error_template, *args):
+    def _check_xy_limits(self, error, pos, error_template, *args):
         x_min, y_min, x_max, y_max = args[-4:]
         if (pos[0] < x_min or pos[0] > x_max or
                 pos[1] < y_min or pos[1] > y_max):
-            raise gcmd.error(error_template % ((pos[0], pos[1]) + args))
+            raise error(error_template % ((pos[0], pos[1]) + args))
 
     def get_status(self, eventtime):
         return {'last_result': self.last_result,

@@ -119,6 +119,10 @@ against the printer X/Y limits before probing, including the active probe's
 configured X/Y offsets. After bed probing, the toolhead lifts by `final_lift_z`
 and remains at the bed probe X/Y position.
 
+The configured bed point is also checked when Klipper connects. If per-tool
+probes are registered, each tool probe's X/Y offsets are checked against the
+printer X/Y limits so unreachable calibration points fail before probing starts.
+
 When using a separate bed point, run this calibration before generating/loading a
 bed mesh, or otherwise in a deliberate known compensation state. Bed tilt, gantry
 tilt, or mesh state can affect the calculated offset because the nozzle reference
