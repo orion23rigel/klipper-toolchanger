@@ -213,23 +213,13 @@ class EndstopRouter:
         self.active_mcu = None
         self.set_active_mcu(None)
         self._mcus = []
-        self._steppers = []
         self.printer = printer
 
     def add_mcu(self, mcu_probe):
         self._mcus.append(mcu_probe)
-        for s in self._steppers:
-            mcu_probe.add_stepper(s)
 
     def set_active_mcu(self, mcu_probe):
         self.active_mcu = mcu_probe
-
-    def add_stepper(self, stepper):
-        self._steppers.append(stepper)
-        for m in self._mcus:
-            m.add_stepper(stepper)
-    def get_steppers(self):
-        return list(self._steppers)
 
     def query_endstop(self, print_time):
         if not self.active_mcu:
