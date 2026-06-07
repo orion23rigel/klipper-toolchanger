@@ -3,35 +3,7 @@
 # Copyright (C) 2023 Viesturs Zarins <viesturz@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import pins
 from . import probe
-
-# Latest Klipper only needs the virtual endstop object to register
-# probe:z_virtual_endstop and report its current position_endstop.
-class ToolHomingViaProbeHelper:
-    def __init__(self, config, position_endstop_cb, query_endstop_cb):
-        self.printer = config.get_printer()
-        self.position_endstop_cb = position_endstop_cb
-        self.query_endstop_cb = query_endstop_cb
-        self.printer.lookup_object('pins').register_chip('probe', self)
-
-    def add_stepper(self, stepper):
-        pass
-    def get_steppers(self):
-        return []
-    def query_endstop(self, print_time):
-        return self.query_endstop_cb(print_time)
-    def get_position_endstop(self):
-        return self.position_endstop_cb()
-
-    def setup_pin(self, pin_type, pin_params):
-        if pin_type != 'endstop' or pin_params['pin'] != 'z_virtual_endstop':
-            raise pins.error(
-                "Probe virtual endstop only useful as endstop pin")
-        if pin_params['invert'] or pin_params['pullup']:
-            raise pins.error(
-                "Can not pullup/invert probe virtual endstop")
-        return self
 
 # Virtual endstop, using a tool attached Z probe in a toolchanger setup.
 # Tool endstop change may be done either via SET_ACTIVE_TOOL_PROBE TOOL=99
@@ -54,9 +26,9 @@ class ToolProbeEndstop:
         self.probe_offsets = self.probe
         self.param_helper = self.probe
         self.cmd_helper = probe.ProbeCommandHelper(config, self, self.mcu_probe.query_endstop)
-        self.homing_helper = ToolHomingViaProbeHelper(
-            config, lambda: self.get_offsets()[2],
-            self.mcu_probe.query_endstop)
+        # Current Klipper only uses position_endstop to identify virtual
+        # probe homing. The active probe session supplies the actual offset.
+        probe.HomingViaProbeHelper(config, 0.0, self.mcu_probe.query_endstop)
         self.probe_session = probe.SampleAveragingHelper(
             config, self.param_helper, self.mcu_probe.start_probe_session)
 
@@ -263,13 +235,6 @@ class EndstopRouter:
         if not self.active_mcu:
             raise self.printer.command_error("Cannot query endstop - no active tool probe.")
         return self.active_mcu.query_endstop(print_time)
-    def get_position_endstop(self):
-        if not self.active_mcu:
-            # This will get picked up by the endstop, and is static
-            # Report 0 and fix up in the homing sequence
-            return 0.0
-        return 0.0
-
     def start_probe_session(self, gcmd):
         if not self.active_mcu:
             raise self.printer.command_error("Cannot start probe session - no active tool probe.")
