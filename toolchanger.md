@@ -33,17 +33,16 @@ The exact sequence how each step is executed:
 
 Configures common tool changing parameters. 
 More than one toolchanger can be configured, with arbitrary names.
-The unnamed toolchanger is always considered the main one and others can be 
-connected to a tool in the main toolchanger.
+The unnamed toolchanger is always the main one. Named toolchangers may provide
+inherited defaults and helper state for tools, while numbered tool assignment
+and generated `T<n>` commands remain registered with the main toolchanger.
 
-Any parameter that can be set on a tool, can be set on the toolchanger as well
-and will provide a default value for all of its tools.
+Most per-tool lifecycle and resource options may also be set on a toolchanger
+to provide defaults. See the [configuration reference](CONFIGURATION.md) for
+the exact inherited options.
 
 ```
 [toolchanger]
-# save_current_tool: false
-  #  If set, saves currently selected tool and makes it available for 
-  # initialize gcode.
 # initialize_gcode: 
   #  Gcode to run on initialize. Typically used for homing any motors, or 
   #  reselecting saved tool.
@@ -80,7 +79,12 @@ and will provide a default value for all of its tools.
   # Experimental, if specified, this gcode is run on `INITIALIZE_TOOLCHANGER RECOVER=1` to recover the position.
   # Should not generally be necessary, but adds optional extra control.
 # transfer_fan_speed: True
-  # When tre, fan speed is transferred during toolchange. When false, fan speeds are not changed during toolchange.     
+  # When true, fan speed is transferred during toolchange. When false, fan speeds are not changed during toolchange.
+# abort_on_tool_missing: False
+  # Detects if the requested tool goes missing during a virtual-SD print and
+  # calls toolchanger error handling.
+# tool_missing_delay: 2.0
+  # Delay in seconds before triggering the tool-missing logic.
 ```
 
 ### [tool]
@@ -88,7 +92,7 @@ and will provide a default value for all of its tools.
 Defines a tool that can be selected.
 Normally a tool has an assigned extruder, fans and associated printer config,
 like pressure advance. But can be purely virtual, like slot in an MMU unit.
-See [command reference](G-Codes.md#toolchanger) for how to control tools.
+See the [G-code section](#gcodes) for how to control tools.
 
 All gcode macros below have the following context available:
 * tool - currently active tool or None if no tool. This is the actual object, not a name, so can use directly, ie `tool.fan`.
@@ -130,11 +134,11 @@ All gcode macros below have the following context available:
 # tool_number: 
   # Tool number to register this tool as.
   # When set, creates the T<n> macro and changes M104/M109 T<n> to target this tool.
-  # Can be overwritten in runtime using [ASSIGN_TOOL](G-Codes.md#ASSIGN_TOOL) command.
+  # Can be overwritten at runtime using the [ASSIGN_TOOL](#assign_tool) command.
 # pickup_gcode:
   # Gcode to run to pick up this tool, if empty, there is no pickup code.
   # The gocode can use `tool` and `toolchanger` variables to access
-  # [their status](Status_Reference.md#tool).
+  # [their status](#status-1).
 # dropoff_gcode:
   # Gcode to run to drop off this tool, if empty, there is no dropoff code.
 # gcode_x_offset: 0
@@ -155,10 +159,6 @@ All gcode macros below have the following context available:
   #  params_retract_mm: 8 
 # t_command_restore_axis: XYZ
    # Which axis to restore with the T<n> command, see SELECT_TOOL for command for more info.
-# abort_on_tool_missing: False
-  # Detects if tool goes missing during a print and calls `toolchanger.error_gcode`.
-# tool_missing_delay: 2.0
-  # Delay in seconds before triggering the tool missing logic. 
 ```
 
 # Gcodes
@@ -168,16 +168,16 @@ All gcode macros below have the following context available:
 The following commands are available when toolchanger is loaded.
 
 ### INITIALIZE_TOOLCHANGER
-`INITIALIZE_TOOLCHANGER [TOOLCHANGER=toolchanger] [TOOL_NAME=<name>] [T=<number>] [RECOVER=0]`: 
+`INITIALIZE_TOOLCHANGER [TOOL=<name>] [T=<number>] [RECOVER=0]`:
 Initializes or Re-initializes the toolchanger state. Sets toolchanger status to `ready`.
 
 The default behavior is to auto-initialize on first tool selection call.
 Always needs to be manually re-initialized after a `SELECT_TOOL_ERROR`. 
-If `TOOL_NAME` is specified, sets the active tool without performing any tool change
-gcode. The after_change_gcode is always called. `TOOL_NAME` with empty name unselects
-tool.
+If `TOOL` or `T` is specified, sets that active tool without performing normal
+pickup/dropoff G-code. The tool's `after_change_gcode` is called.
 
-Experimental: If `RECOVER=1` is specified, `recover_gcode` is run and toolehad is moved to restore_axis position. 
+Experimental: When re-initializing from an error state with a selected tool,
+`RECOVER=1` runs that tool's `recover_gcode` and restores the saved position.
 
 ### ASSIGN_TOOL
 `ASSIGN_TOOL TOOL=<name> N=<number>`: Assign tool to specific tool number.
@@ -234,27 +234,27 @@ A verification failure will:
 ### SET_TOOL_TEMPERATURE
 `SET_TOOL_TEMPERATURE [TOOL=<name>] [T=<number>]  TARGET=<temp> [WAIT=0]`: Set tool temperature.
 
-### ENTER_DOCIKING_MODE
+### ENTER_DOCKING_MODE
 `ENTER_DOCKING_MODE`: Manually enter docking mode, with tool and gcode offsets cleared. Primarily for dock alignment.
 
-### EXIT_DOCIKING_MODE
+### EXIT_DOCKING_MODE
 `EXIT_DOCKING_MODE`: Exit manual docking mode.
 
 ### TEST_TOOL_DOCKING
 `TEST_TOOL_DOCKING`: Dock and undock current tool. Requires manual docking mode.
 
 ### SET_TOOL_PARAMETER
-`SET_TOOL_PARAMETER [TOOL=<name>] [T=<number>]  PARAMETER=parameter_<name> VALUE=<value>`: 
+`SET_TOOL_PARAMETER [TOOL=<name>] [T=<number>] PARAMETER=<name> VALUE=<value>`:
 Change tool parameter in runtime.
 Defaults to current tool if tool not specified.
 
 ### SAVE_TOOL_PARAMETER
-`SAVE_TOOL_PARAMETER [TOOL=<name>] [T=<number>]  PARAMETER=parameter_<name>`: 
+`SAVE_TOOL_PARAMETER [TOOL=<name>] [T=<number>] PARAMETER=<name>`:
 Saves the tool parameter to pending config changes.
 Defaults to current tool if tool not specified.
 
 ### RESET_TOOL_PARAMETER
-`RESET_TOOL_PARAMETER [TOOL=<name>] [T=<number>]  PARAMETER=parameter_<name> VALUE=<value>`: 
+`RESET_TOOL_PARAMETER [TOOL=<name>] [T=<number>] PARAMETER=<name>`:
 Resets a parameter to its original value.
 Defaults to current tool if tool not specified.
 

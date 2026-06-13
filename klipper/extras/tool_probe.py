@@ -14,6 +14,8 @@ class ToolProbe:
 
         pin = config.get('pin')
         ppins = self.printer.lookup_object('pins')
+        # The endstop wrapper probes this pin, while the button callback watches
+        # the same signal continuously for optional crash detection.
         ppins.allow_multi_use_pin(pin.replace('^', '').replace('!', ''))
 
         self.probe_offsets = probe.ProbeOffsetsHelper(config)

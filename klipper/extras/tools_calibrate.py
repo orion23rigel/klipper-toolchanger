@@ -85,6 +85,8 @@ class ToolsCalibrate:
     def locate_sensor(self, gcmd):
         toolhead = self.printer.lookup_object('toolhead')
         position = toolhead.get_position()
+        # First establish a rough contact plane and XY center, then probe Z at
+        # that center and repeat XY using the more accurate contact plane.
         downPos = self.probe_multi_axis.run_probe("z-", gcmd, samples=1)
         center_x, center_y = self.calibrate_xy(toolhead, downPos, gcmd,
                                                samples=1)
@@ -289,6 +291,7 @@ class PrinterProbeMultiAxis:
 
     def run_probe(self, direction, gcmd, speed_ratio=1.0, samples=None,
                   max_distance=100.0):
+        """Probe one axis, retry full outlier sets, and aggregate contacts."""
         speed = gcmd.get_float("PROBE_SPEED", self.speed,
                                above=0.) * speed_ratio
         if direction not in direction_types:
@@ -325,6 +328,8 @@ class PrinterProbeMultiAxis:
                 if retries >= samples_retries:
                     raise gcmd.error("Probe samples exceed samples_tolerance")
                 gcmd.respond_info("Probe samples exceed tolerance. Retrying...")
+                # A retry discards the entire set so the final aggregate never
+                # mixes samples from before and after an outlier.
                 retries += 1
                 positions = []
             # Retract

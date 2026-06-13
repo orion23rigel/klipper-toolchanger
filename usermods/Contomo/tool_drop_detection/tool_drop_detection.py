@@ -103,6 +103,7 @@ def _parse_default_line(raw: str) -> Dict[str, _Number]:
 
 # ───────────────────────────── main object ────────────────────────────
 class ToolDropDetection:
+    """Manage one-shot readers, live pollers, baselines, and crash state."""
     def __init__(self, cfg):
         self.printer = cfg.get_printer()
         # ── event handlers ───────────────────────────────────────────────────────────

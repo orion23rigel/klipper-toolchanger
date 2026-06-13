@@ -33,6 +33,7 @@ class ToolInterval:
         self.end = _FUTURE
 
 class ToolMissingHelper:
+    """Compare requested-tool print-time intervals with delayed detection."""
     def __init__(self, toolchanger, config):
         self.printer = config.get_printer()
         self.toolchanger = toolchanger
@@ -63,6 +64,8 @@ class ToolMissingHelper:
         if len(self.active_intervals) > 10:
             del self.active_intervals[0]
         self.tool_lasttime = time
+        # Validate after the configured delay so mechanical switches and queued
+        # moves have time to settle. A newer event invalidates this callback.
         self.reactor.register_callback(lambda _: self._tool_change_delayed(time, tool), time + self.wait_time)
 
     def deactivate_at_time(self, time):
@@ -492,8 +495,9 @@ class Toolchanger:
                     "RESTORE_GCODE_STATE NAME=_toolchange_state MOVE=0")
             self.run_gcode('error_gcode', self.error_gcode, extra_context)
             if is_inside_toolchange:
-                # HACKY HACKY HACKY
-                # Manually transfer over before toolchange position to paused gcode state, Restore/Save looses that.
+                # A PAUSE inside error_gcode captures the temporary docking
+                # coordinates. Replace them with the pre-change coordinates so
+                # RESUME returns to the intended print position.
                 pause_state = self.gcode_move.saved_states.get('PAUSE_STATE', None)
                 if pause_state and self.last_change_pickup_tool:
                     pause_state['last_position'] = self.last_change_gcode_position
@@ -592,6 +596,8 @@ class Toolchanger:
                 return reactor.NEVER
             if self.validate_tool_timer:
                 reactor.unregister_timer(self.validate_tool_timer)
+            # Schedule validation after prior queued motion reaches the MCU,
+            # plus a short delay for the physical detection input to settle.
             self.validate_tool_timer = toolhead.register_lookahead_callback(lambda print_time:
                                                                             reactor.register_timer(timer_handler, reactor.monotonic() + 0.2 + max(0.0, print_time - toolhead.mcu.estimated_print_time(reactor.monotonic())) ))
         else:
@@ -811,6 +817,8 @@ class FanSwitcher:
         if self.active_fan == fan or not self.transfer_fan_speed:
             return
 
+        # Keep M106 state even while no tool fan is active, then transfer the
+        # previous or pending speed when a new tool becomes active.
         speed_to_set = self.pending_speed
         if self.active_fan:
             speed_to_set = self.active_fan.get_status(0)['speed']

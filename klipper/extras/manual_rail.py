@@ -163,6 +163,8 @@ class ManualRail:
         self.gaxis_limit_accel = limit_accel
         toolhead.add_extra_axis(self, self.commanded_pos)
     def process_move(self, print_time, move, ea_index):
+        # Toolhead moves describe velocity along the full path. axis_r projects
+        # those values onto this extra rail before appending its trapq move.
         axis_r = move.axes_r[ea_index]
         start_pos = move.start_pos[ea_index]
         accel = move.accel * axis_r
@@ -180,7 +182,8 @@ class ManualRail:
         if ((self.pos_min is not None and movepos < self.pos_min)
             or (self.pos_max is not None and movepos > self.pos_max)):
             raise move.move_error()
-        # Check if need to limit maximum velocity and acceleration
+        # Klipper limits the whole move, so scale this rail's component limits
+        # by the ratio between total move distance and extra-axis distance.
         axis_ratio = move.move_d / abs(move.axes_d[ea_index])
         limit_velocity = self.gaxis_limit_velocity * axis_ratio
         limit_accel = self.gaxis_limit_accel * axis_ratio

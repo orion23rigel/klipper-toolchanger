@@ -33,25 +33,25 @@ printer.tool_drop_detection.$NAME$.->
 ## **[tool_drop_detection]**
 - accelerometer: [comma seperated names]
 - polling_freq: [1-20] (default: 1) -> *the frequency at which at ask the mcu for values*
-- polling_rate: [see adxl345] (default: 50) -> *the frequency the accelerometer is spitting out values to mcu*
+- polling_rate: [see adxl345] (default: 10) -> *the requested accelerometer data rate; the closest supported rate is used*
 
 ### crash/drop detection
-- peak_g_threshold: [ 0.1 - 50 ] (default: 5) -> *if defined enables also triggering crash gcode when a peak higher than this is detected (instant)*
+- peak_g_threshold: [minimum 0.01] (default: unset) -> *default instant peak threshold used while crash detection is armed*
 - rotation_threshold (vector <-> vector)
   - either:  rotation_threshold: [0.0 - 180.0] (±abs, vector to vector)
   - or:      pitch_threshold and/or roll_threshold: [0.0 - 180.0] (±abs, actual rotation angles)
-- crash_mintime: [ 0.0 - 100.0 ] (default 1.0) -> *how long the angle has to be exceeded to be considered dropped* (high g events remain instant)
-- crash_gcode: gcode template to be executed when THRESHOLD exceeded. provided with extra context: [ie: 'ACCEL':T1]
+- drop_mintime: [minimum 0.0] (default 1.0) -> *how long the angle has to be exceeded to be considered dropped* (high g events remain instant)
+- crash_gcode: gcode template executed when an armed threshold is exceeded. Context includes `accelerometer`, `pitch`, `roll`, `vector`, `magnitude`, and `peak`.
 
 ### angle templates (always use config set limits)
-- angle_exceed: gcode template to be ran when the angle gets exceeded
-- angle_return: gcode template to be ran when the angle returns to normal.
-- hysterisis: [0.0-180.0] (default: 5.0) Hysterisis between those two templates executing.
+- angle_exceed_gcode: gcode template to run when the angle is exceeded
+- angle_return_gcode: gcode template to run when the angle returns to normal.
+- angle_hysteresis: [0.1-180.0] (default: 5.0) Hysteresis between those two templates executing.
 
 
-- current_samples: [0-?] (default: 5) -> how many of the latest samples to use for updating the "current" key.
+- current_samples: [0-?] (default: 10) -> how many of the latest samples to use for updating the "current" key.
 - session_time: [0.01-60] (default: 1) -> How long the session avreaging is. (in seconds)
-- sample_results: [ median | average ] (default: median) -> *norm* (the way to calculate our current accel.)
+- samples_result: [ median | mean ] (default: median) -> *the statistic used to calculate current acceleration*
 - decimals: [ 0 - 10 ] (default: 3) -> *the amount of decimals to pack into our objects*
 
 ## commands *(all can take an optional [ACCEL] param, none for all)*
@@ -64,6 +64,4 @@ printer.tool_drop_detection.$NAME$.->
  * `TDD_REFERENCE_RESET` -> Resets the current reference frame back to config defaults. 
  * `TDD_START` ([LIMIT_PITCH=0.0-180.0] [LIMIT_ROLL=0.0-180.0]) or [LIMIT_ANGLE=0.0-180.0] [/CRASH_MINTIME=0.0-100.0/] [/LIMIT_G=0.0-25/]
  * `TDD_STOP`  stops tool drop detection for that tool or all
-
-
 

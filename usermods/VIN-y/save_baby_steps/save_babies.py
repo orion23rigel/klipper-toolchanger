@@ -23,6 +23,7 @@ class SaveBabies:
             self.gcode.respond_info("No gcode_z_offset saved")
 
     def save_babysteps(self, gcmd, babystep):
+        """Apply a babystep while parsing tool-probe entries in the save block."""
         ## Variables
         home_dir = os.path.expanduser("~")
         printer_config = os.path.join(home_dir, "printer_data/config/printer.cfg")

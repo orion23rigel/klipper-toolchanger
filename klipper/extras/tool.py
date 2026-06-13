@@ -171,6 +171,8 @@ class Tool:
                 "ACTIVATE_EXTRUDER EXTRUDER='%s'" % (self.extruder_name,))
         hotend_extruder = toolhead.get_extruder().name
         if self.extruder_stepper and hotend_extruder:
+                # Detach from any previous queue before binding this stepper to
+                # the active hotend's motion queue.
                 gcode.run_script_from_command(
                     "SYNC_EXTRUDER_MOTION EXTRUDER='%s' MOTION_QUEUE=" % (self.extruder_stepper_name, ))
                 gcode.run_script_from_command(

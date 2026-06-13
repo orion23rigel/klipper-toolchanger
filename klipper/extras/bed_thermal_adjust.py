@@ -55,6 +55,8 @@ class BedThermalAdjust:
             self.active_timer = eventtime
             bed_target_temp = self.heater_bed.get_status(0)['target']
             if bed_target_temp != self.requested_heater_target:
+                # Another component changed the real heater target. Stop
+                # compensating so this module does not overwrite that request.
                 self.active = False
             else:
                 self.update_heater_bed()
@@ -65,9 +67,11 @@ class BedThermalAdjust:
     def cmd_M140(self, gcmd, wait=False):
         # Set Bed Temperature
         self.requested_temp = gcmd.get_float('S', 0.)
-        bed_cooled_down = self.active_timer <= self.inactive_timer + BED_COOLDOWN_TIME
+        bed_cooled_down = self.active_timer <= self.inactive_timer - BED_COOLDOWN_TIME
         active = self.requested_temp > 0
-        if self.active and self.use_bed_temp and bed_cooled_down:
+        if not self.active and active and self.use_bed_temp and bed_cooled_down:
+            # Refresh ambient from the bed only when starting to heat from a
+            # cooled-down state.
             self.ambient_temp = round(float(self.heater_bed.get_status(0)['temperature']),1)
         self.update_heater_bed(wait)
         # set active last to avoid races
@@ -84,7 +88,8 @@ class BedThermalAdjust:
     def to_heater_temp(self, surface_temp):
         if surface_temp <= 0:
             return surface_temp
-        # Inverse of the above
+        # Invert to_surface_temp() to obtain the heater-sensor target needed
+        # for the requested bed-surface temperature.
         # s = h - (h - AA) * D = h - h*D + AA*D = h * (1 - D) + AA * D
         # h = (s - AA * D) / (1 - D)
         return max(surface_temp, min(self.max_heater_temp, (surface_temp - self.ambient_temp * self.temp_drop) / (1.0 - self.temp_drop)))

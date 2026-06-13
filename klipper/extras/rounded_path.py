@@ -134,6 +134,9 @@ class RoundedPath:
                                   d = d))
 
     def _lineto(self, pos):
+        # A corner cannot be emitted until its following point is known. D=0
+        # terminates the chain; otherwise completed non-overlapping corners can
+        # be flushed while retaining enough points to calculate the next one.
         self.buffer.append(pos)
         if len(self.buffer) >= 3:
             self._calculate_corner(self.buffer[-2], self.buffer[-3], self.buffer[-1])
@@ -188,7 +191,10 @@ class RoundedPath:
         self.buffer[0].vec = self.lastg0
 
     def _deconflict_lin_d(self, num_segments):
+        """Shrink adjacent corner offsets until they fit their shared edges."""
         order = [i+1 for i in range(num_segments)]
+        # Resolve the shortest shared edges first. This prevents later corners
+        # from consuming space that a tighter neighboring segment requires.
         order = sorted(order, key=lambda a: self.buffer[a].len)
         # Process segments, shortest first
         for i in order:

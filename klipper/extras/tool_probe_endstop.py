@@ -103,6 +103,8 @@ class ToolProbeEndstop:
             triggered = tool_probe.mcu_probe.query_endstop(print_time)
             if tool_probe.tool_number is not None:
                 self.last_query[tool_probe.tool_number] = triggered
+            # Shared detection/probe pins use "open" to identify the mounted
+            # tool; exactly one open probe is therefore the active candidate.
             if not triggered:
                 candidates.append(tool_probe)
         return candidates
@@ -175,6 +177,8 @@ class ToolProbeEndstop:
             return
         if is_triggered:
             self.crash_lasttime = eventtime
+            # The timestamp acts as a cancellable minimum-duration debounce:
+            # opening the probe or receiving a newer trigger invalidates it.
             self.reactor.register_callback(lambda _: self._probe_triggered_delayed(eventtime),
                                            eventtime + self.crash_mintime)
         else:

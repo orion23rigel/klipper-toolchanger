@@ -18,7 +18,7 @@ Defines a new rail, that is not part of the normal XYZ kinematic.
 #   See the "stepper" section for a description of these parameters.
 #velocity:
 #   Set the default velocity (in mm/s) for the stepper. This value
-#   will be used if a MANUAL_STEPPER command does not specify a SPEED
+#   will be used if a MANUAL_RAIL command does not specify a SPEED
 #   parameter. The default is 5mm/s.
 #accel:
 #   Set the default acceleration (in mm/s^2) for the stepper. An
