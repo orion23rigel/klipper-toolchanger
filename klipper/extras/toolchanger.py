@@ -58,19 +58,20 @@ class ToolMissingHelper:
         if self.enabled:
             self.toolhead.register_lookahead_callback(lambda t: self.deactivate_at_time(t))
 
-    def activate_at_time(self, time, tool):
-        if len(self.active_intervals) == 0 or self.active_intervals[-1].end <= time:
-            self.active_intervals.append(ToolInterval(time, tool))
+    def activate_at_time(self, print_time, tool):
+        curtime = self.reactor.monotonic()
+        if len(self.active_intervals) == 0 or self.active_intervals[-1].end <= print_time:
+            self.active_intervals.append(ToolInterval(print_time, tool))
         if len(self.active_intervals) > 10:
             del self.active_intervals[0]
-        self.tool_lasttime = time
+        self.tool_lasttime = print_time
         # Validate after the configured delay so mechanical switches and queued
         # moves have time to settle. A newer event invalidates this callback.
-        self.reactor.register_callback(lambda _: self._tool_change_delayed(time, tool), time + self.wait_time)
+        self.reactor.register_callback(lambda _: self._tool_change_delayed(print_time, tool), curtime + self.wait_time)
 
-    def deactivate_at_time(self, time):
-        if len(self.active_intervals) > 0 and self.active_intervals[-1].end >= time:
-            self.active_intervals[-1].end = time
+    def deactivate_at_time(self, print_time):
+        if len(self.active_intervals) > 0 and self.active_intervals[-1].end >= print_time:
+            self.active_intervals[-1].end = print_time
         self.activate_lasttime = 0.
 
     def note_tool_change(self, eventtime, current_tool):
@@ -78,7 +79,7 @@ class ToolMissingHelper:
         self.tool_lasttime = eventtime
         self.current_tool = current_tool
         self.reactor.register_callback(lambda _: self._tool_change_delayed(eventtime, current_tool),
-                                       eventtime + self.wait_time)
+                                       self.reactor.monotonic() + self.wait_time)
 
     def find_interval_at(self, eventtime):
         return next((i for i in self.active_intervals if i.start <= eventtime <= i.end), None)

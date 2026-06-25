@@ -180,7 +180,7 @@ class ToolProbeEndstop:
             # The timestamp acts as a cancellable minimum-duration debounce:
             # opening the probe or receiving a newer trigger invalidates it.
             self.reactor.register_callback(lambda _: self._probe_triggered_delayed(eventtime),
-                                           eventtime + self.crash_mintime)
+                                           self.reactor.monotonic() + self.crash_mintime)
         else:
             self.crash_lasttime = 0.
 
@@ -190,6 +190,10 @@ class ToolProbeEndstop:
             return
         if self.crash_detection_active:
             self.crash_detection_active = False
+            # Crash detection is deactivated before running crash_gcode to
+            # prevent recursive probe triggers if the crash handler runs a
+            # probe operation (e.g. G28 Z, QUERY_PROBE) that would otherwise
+            # call note_probe_triggered again while the gcode is executing.
             self.crash_gcode.run_gcode_from_command()
 
 class ProbeRouter:
