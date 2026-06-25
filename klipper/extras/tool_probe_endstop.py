@@ -21,6 +21,7 @@ class ToolProbeEndstop:
         self.gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.crash_detection_active = False
         self.crash_lasttime = 0.
+        self.crash_in_progress = False
         self.mcu_probe = EndstopRouter(self.printer)
         self.probe = ProbeRouter(self.printer)
         self.probe_offsets = self.probe
@@ -184,9 +185,20 @@ class ToolProbeEndstop:
         if self.crash_lasttime != expect_eventtime:
             # The trigger was cancelled
             return
-        if self.crash_detection_active:
-            self.crash_detection_active = False
+        if not self.crash_detection_active:
+            # Already handled (deactivated by a newer trigger or stop command)
+            return
+        if self.crash_in_progress:
+            # Prevent recursive crash_gcode execution if the gcode itself
+            # triggers a probe operation (G28 Z, QUERY_PROBE, etc.) that
+            # would schedule another _probe_triggered_delayed callback.
+            return
+        self.crash_in_progress = True
+        self.crash_detection_active = False
+        try:
             self.crash_gcode.run_gcode_from_command()
+        finally:
+            self.crash_in_progress = False
 
 class ProbeRouter:
     def __init__(self, printer):
