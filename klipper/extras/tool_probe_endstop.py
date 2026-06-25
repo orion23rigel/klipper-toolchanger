@@ -176,7 +176,7 @@ class ToolProbeEndstop:
         if is_triggered:
             self.crash_lasttime = eventtime
             self.reactor.register_callback(lambda _: self._probe_triggered_delayed(eventtime),
-                                           eventtime + self.crash_mintime)
+                                           self.reactor.monotonic() + self.crash_mintime)
         else:
             self.crash_lasttime = 0.
 
