@@ -88,6 +88,7 @@ class Toolchanger:
         self.initialize_on = config.getchoice(
             'initialize_on', init_options, 'first-use')
         self.verify_tool_pickup = config.getboolean('verify_tool_pickup', True)
+        self.temp_wait_threshold = config.getfloat('temperature_wait_threshold', 0., minval=0.)
         self.require_tool_present = config.getboolean('require_tool_present', False)
         self.transfer_fan_speed = config.getboolean('transfer_fan_speed', True)
         self.uses_axis = config.get('uses_axis', 'xyz').lower()
@@ -281,6 +282,11 @@ class Toolchanger:
             raise gcmd.error(
                 "SET_TOOL_TEMPERATURE: No extruder or heater specified for tool %s" % (
                     tool.name))
+        if wait and self.temp_wait_threshold > 0.:
+            cur = tool.heater.get_status(
+                self.printer.get_reactor().monotonic())['temperature']
+            if abs(cur - temp) <= self.temp_wait_threshold:
+                wait = False
         heaters = self.printer.lookup_object('heaters')
         heaters.set_temperature(tool.heater, temp, wait)
 
