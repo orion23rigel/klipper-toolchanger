@@ -24,14 +24,6 @@ DETECT_UNAVAILABLE = "unavailable"
 DETECT_ABSENT = "absent"
 DETECT_PRESENT = "mounted"
 
-_FUTURE = 9999999999999999.
-
-class ToolInterval:
-    def __init__(self, start, tool):
-        self.start = start
-        self.tool = tool
-        self.end = _FUTURE
-
 class ToolMissingHelper:
     def __init__(self, toolchanger, config):
         self.printer = config.get_printer()
@@ -39,8 +31,6 @@ class ToolMissingHelper:
         self.reactor = self.printer.get_reactor()
         self.enabled = config.getboolean('abort_on_tool_missing', False)
         self.wait_time = config.getfloat('tool_missing_delay', 2.0, above=0.)
-        # Keep a log of last 10 active intervals. Probably an overkill.
-        self.active_intervals = []
         self.tool_lasttime = 0.
         self.current_tool = None
         self.printer.register_event_handler('klippy:connect',
@@ -53,25 +43,15 @@ class ToolMissingHelper:
     def activate(self, tool):
         if self.enabled:
             self.toolhead.register_lookahead_callback(lambda t: self.activate_at_time(t, tool))
+
     def deactivate(self):
-        if self.enabled:
-            self.toolhead.register_lookahead_callback(lambda t: self.deactivate_at_time(t))
+        self.tool_lasttime = -1.
 
     def activate_at_time(self, print_time, tool):
         curtime = self.reactor.monotonic()
-        if len(self.active_intervals) == 0 or self.active_intervals[-1].end <= print_time:
-            self.active_intervals.append(ToolInterval(print_time, tool))
-        if len(self.active_intervals) > 10:
-            del self.active_intervals[0]
         self.tool_lasttime = print_time
-        # Validate after the configured delay so mechanical switches and queued
-        # moves have time to settle. A newer event invalidates this callback.
-        self.reactor.register_callback(lambda _: self._tool_change_delayed(print_time, tool), curtime + self.wait_time)
-
-    def deactivate_at_time(self, print_time):
-        if len(self.active_intervals) > 0 and self.active_intervals[-1].end >= print_time:
-            self.active_intervals[-1].end = print_time
-        self.activate_lasttime = 0.
+        self.reactor.register_callback(lambda _: self._tool_change_delayed(print_time, tool),
+                                       curtime + self.wait_time)
 
     def note_tool_change(self, eventtime, current_tool):
         logging.info(f"Tool change to {current_tool} - detected, waiting... ")
@@ -80,21 +60,17 @@ class ToolMissingHelper:
         self.reactor.register_callback(lambda _: self._tool_change_delayed(eventtime, current_tool),
                                        self.reactor.monotonic() + self.wait_time)
 
-    def find_interval_at(self, eventtime):
-        return next((i for i in self.active_intervals if i.start <= eventtime <= i.end), None)
-
     def _tool_change_delayed(self, time, current_tool):
-        interval = self.find_interval_at(time)
-        if interval is None:
-            logging.info(f"Tool change to {current_tool}, no active tool requested, ignoring")
-        elif self.tool_lasttime != time:
+        if not self.enabled:
+            return
+        if self.tool_lasttime != time:
             logging.info(f"Tool change to {current_tool} ignored, changed again before timeout")
         elif not self.sdcard.is_active():
             logging.info(f"Tool change to {current_tool} ignored, not printing")
-        elif interval and interval.tool == current_tool:
+        elif current_tool == self.toolchanger.active_tool:
             logging.info(f"Tool change to {current_tool}, as expected")
         else:
-            logging.error(f"Tool change to{current_tool} at {time} - mismatch after wait time, expected {interval}, erroring out!!!")
+            logging.error(f"Tool change to {current_tool} at {time} - mismatch after wait time, expected {self.toolchanger.active_tool}, erroring out!!!")
             self.toolchanger.process_error(None, "Tool no longer attached.")
 
 class Toolchanger:
@@ -227,7 +203,7 @@ class Toolchanger:
 
     def _handle_shutdown(self):
         self.status = STATUS_UNINITALIZED
-        self.tool_missing_helper.deactivate_at_time(_FUTURE)
+        self.tool_missing_helper.deactivate()
         self.active_tool = None
         self.gcode_transform.tool = None
 
