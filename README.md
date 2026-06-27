@@ -23,6 +23,8 @@ primary_branch: main
 Add the [macros.cfg](/macros.cfg) to your printer config.
 
 ## Changelog
+* 2026.6.26 - Add detection_debounce config option to filter noisy tool detection pins.
+* 2026.6.26 - Add temperature_wait_threshold to skip redundant M109 waits when already at target temperature.
 * 2026.2.15 - Bring back the adjust Z after nozzle homing.
 * 2026.2.8
      - **Breaking change** tool.detection_pin is inverted. Add/Remove the `!` in pin definition when updating.
