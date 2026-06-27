@@ -57,6 +57,9 @@ and will provide a default value for all of its tools.
 # temperature_wait_threshold: 0
   # If non-zero, SET_TOOL_TEMPERATURE will skip the M109 wait when the
   # current temperature is already within this many degrees of the target.
+# detection_debounce: 0.050
+  # Global default debounce time in seconds for tool detection pins.
+  # Can be overridden per tool. Set to 0 to disable debouncing.
 # require_tool_present: False
   # Raise error if no tool present on init or on unmount. 
   # Use in case the tool contains crucial sensors for the printer to operate/home.  
@@ -131,8 +134,8 @@ All gcode macros below have the following context available:
   #  - when not triggered, the tool is mounted
   # Note: to allow sharing a pin for both tool detection and probing, the semantics are inverted.
 # detection_debounce: 0.050
-  # Debounce time in seconds for the detection pin. Prevents false
-  # triggers from vibration or electrical noise. Set to 0 to disable.
+  # Overrides the global detection_debounce for this tool. Debounce time
+  # in seconds for the detection pin. Set to 0 to disable.
 # tool_number: 
   # Tool number to register this tool as.
   # When set, creates the T<n> macro and changes M104/M109 T<n> to target this tool.

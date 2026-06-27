@@ -105,6 +105,7 @@ class Toolchanger:
             'initialize_on', init_options, 'first-use')
         self.verify_tool_pickup = config.getboolean('verify_tool_pickup', True)
         self.temp_wait_threshold = config.getfloat('temperature_wait_threshold', 0., minval=0.)
+        self.detection_debounce = config.getfloat('detection_debounce', 0.050, minval=0.)
         self.require_tool_present = config.getboolean('require_tool_present', False)
         self.transfer_fan_speed = config.getboolean('transfer_fan_speed', True)
         self.uses_axis = config.get('uses_axis', 'xyz').lower()

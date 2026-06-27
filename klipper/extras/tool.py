@@ -39,7 +39,7 @@ class Tool:
         self.heater_name = self._config_get(config, 'heater', None)
         detect_pin_name = config.get('detection_pin', None)
         self.detect_state = toolchanger.DETECT_UNAVAILABLE
-        self.detection_debounce = config.getfloat('detection_debounce', 0.050, minval=0.)
+        self.detection_debounce = self._config_getfloat(config, 'detection_debounce', 0.050)
         self._detect_timer = None
         if detect_pin_name:
             self.printer.load_object(config, 'buttons').register_buttons([detect_pin_name], self._handle_detect)
