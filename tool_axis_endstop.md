@@ -32,7 +32,7 @@ endstop_pin: toolchanger_y:y_virtual_endstop
 
 ### Per-tool endstop definitions
 
-Add a `[tool_axis_endstop Tn]` section for each tool (order relative to `[tool Tn]` does not matter):
+Add a `[tool_axis_endstop Tn]` section for each tool:
 
 ```
 [tool_axis_endstop T0]
