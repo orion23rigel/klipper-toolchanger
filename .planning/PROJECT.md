@@ -24,19 +24,24 @@ A Klipper firmware extension that enables per-tool X and Y axis endstop routing 
 - ✓ Tool detection — per-tool detection pins registered via Klipper's `buttons` subsystem
 - ✓ Crash detection — `ToolProbeEndstop` monitors active probe for unexpected triggers during printing
 
+### Validated
+
+- ✓ **REQ-01**: Per-tool X endstop routing — v1.0
+- ✓ **REQ-02**: Per-tool Y endstop routing — v1.0
+- ✓ **REQ-03**: Config validation at `klippy:connect` — v1.0
+- ✓ **REQ-04**: CoreXY cross-wiring compatibility — v1.0
+- ✓ **REQ-05**: Shared pin support — v1.0
+
 ### Active
 
-- [ ] **REQ-01**: Per-tool X endstop routing — `[tool_axis_endstop Tn]` config sections define X endstop pins per tool, virtual chip `toolchanger_x` routes homing queries to the active tool's endstop
-- [ ] **REQ-02**: Per-tool Y endstop routing — same pattern as X, optional for tools with per-tool Y endstops
-- [ ] **REQ-03**: Config validation — at `klippy:connect`, verify all registered tools have endstop pins defined when virtual chip is active; block startup with clear error if any tool is missing
-- [ ] **REQ-04**: CoreXY cross-wiring compatibility — `add_stepper()` forwards to all registered endstops so each MCU monitors the correct steppers during homing
-- [ ] **REQ-05**: Shared pin support — `allow_multi_use_pin` prevents pin conflicts when probe pin and X endstop pin are the same physical pin
+- [ ] Per-tool position_endstop overrides — architecture supports it, not implementing now
+- [ ] Sensorless endstop routing — DIAG pins on mainboard, stays global
 
 ### Out of Scope
 
-- [ ] Per-tool position_endstop overrides — architecture supports it but not implementing now; all tools share the same position_endstop value
-- [ ] Sensorless endstop routing — sensorless homing (TMC DIAG pins on mainboard) stays global; per-tool routing applies to physical endstop pins on toolhead MCUs
-- [ ] Multi-toolhead IDEX support — this is for single-gantry multi-toolhead changers, not dual-carriage IDEX configurations
+- [ ] Per-tool position_endstop overrides — architecture supports it, not implementing now
+- [ ] Sensorless endstop routing — DIAG pins on mainboard, stays global
+- [ ] Multi-toolhead IDEX support — different architecture; single-gantry toolchangers only
 
 ## Context
 
@@ -80,6 +85,8 @@ A Klipper firmware extension that enables per-tool X and Y axis endstop routing 
 | Validation at `klippy:connect` | All config parsed by then; catches missing tool definitions before runtime | Blocks startup with clear error |
 | `allow_multi_use_pin` for shared pins | Probe and X endstop share PB8 on each tool; Klipper's built-in mechanism handles this | No pin conflict |
 | Y endstop included alongside X | Same pattern, future-proof for setups with per-tool Y endstops | `toolchanger_y` chip, same code path |
+| `home_start`/`home_wait`/`query_endstop` proxy chain | Routes to active tool's physical MCU_endstop | Matches `ToolProbeEndstop` pattern for Z probes |
+| CoreXY cross-wiring via `add_stepper()` | Each MCU monitors all relevant steppers during homing | Handles both ordering scenarios |
 
 ---
-*Last updated: Mon Jun 29 2026 after initial planning*
+*Last updated: Tue Jun 30 2026 after v1.0 milestone*
