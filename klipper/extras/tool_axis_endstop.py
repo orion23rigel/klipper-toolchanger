@@ -78,6 +78,10 @@ class ToolAxisEndstop:
         return list(self._steppers)
 
     def get_position_endstop(self):
+        if self.active_mcu_endstop:
+            return self.active_mcu_endstop.get_position_endstop()
+        if self.default_endstop:
+            return self.default_endstop.get_position_endstop()
         return 0.0
 
     def has_endstop(self, tool_number):
@@ -116,6 +120,10 @@ def load_config(config):
     virtual chip is never created and behavior is unchanged.
     """
     printer = config.get_printer()
+    # Read position_endstop (if present) so Klipper's unused-options
+    # check does not flag it — the actual value is forwarded at runtime
+    # from the active tool's MCU_endstop via get_position_endstop().
+    config.getfloat('position_endstop', None)
     x_default = config.get('x_default_pin', None)
     y_default = config.get('y_default_pin', None)
 
