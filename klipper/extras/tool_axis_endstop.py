@@ -77,6 +77,9 @@ class ToolAxisEndstop:
     def get_steppers(self):
         return list(self._steppers)
 
+    def get_position_endstop(self):
+        return 0.0
+
     def has_endstop(self, tool_number):
         """Public accessor used by validation check."""
         return tool_number in self._endstops
@@ -133,21 +136,32 @@ def load_config(config):
 
 
 def load_config_prefix(config):
-    """Per-tool [tool Tn] section — reads x_endstop_pin / y_endstop_pin.
+    """Per-tool [tool_axis_endstop Tn] section.
 
     Registers this tool's physical endstop pin(s) with the
-    corresponding virtual chip.  The tool number is read from
-    the tool's 'tool_number' parameter.
+    corresponding virtual chip.  The tool number is inferred
+    from the section name suffix (e.g. "T0" -> 0) or from an
+    explicit 'tool' parameter.
     """
     printer = config.get_printer()
     ppins = printer.lookup_object('pins')
+    name = config.get_name()
 
-    tool_number = config.getint('tool_number', None)
-    if tool_number is None:
-        return None
+    # Extract tool tag from "tool_axis_endstop T0" -> "T0" -> 0
+    parts = name.split(None, 1)
+    tool_tag = parts[1] if len(parts) > 1 else ''
 
-    x_pin = config.get('x_endstop_pin', None)
-    y_pin = config.get('y_endstop_pin', None)
+    tool_number = config.getint('tool', None)
+    if tool_number is None and tool_tag:
+        try:
+            t = tool_tag.upper()
+            if t.startswith('T'):
+                tool_number = int(t[1:])
+        except ValueError:
+            pass
+
+    x_pin = config.get('x_pin', None)
+    y_pin = config.get('y_pin', None)
 
     for axis, pin in (('x', x_pin), ('y', y_pin)):
         if pin is None:

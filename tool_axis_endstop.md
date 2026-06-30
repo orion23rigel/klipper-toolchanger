@@ -10,7 +10,7 @@ This is the same pattern already used for per-tool Z probing via `tool_probe_end
 
 ## How It Works
 
-1. Each tool defines its X (and optionally Y) endstop pin via `x_endstop_pin` / `y_endstop_pin` parameters in its `[tool Tn]` section.
+1. Each tool defines its X (and optionally Y) endstop pin in a `[tool_axis_endstop Tn]` config section.
 2. Virtual chips `toolchanger_x` and `toolchanger_y` are registered with Klipper's pins system.
 3. `[stepper_x] endstop_pin` is set to `toolchanger_x:x_virtual_endstop` (and similarly for Y).
 4. On tool change, the router switches to the selected tool's physical endstop.
@@ -32,19 +32,25 @@ endstop_pin: toolchanger_y:y_virtual_endstop
 
 ### Per-tool endstop definitions
 
-Add `x_endstop_pin` (and optionally `y_endstop_pin`) to each `[tool Tn]` section:
+Add a `[tool_axis_endstop Tn]` section for each tool, before the corresponding `[tool Tn]` section:
 
 ```
+[tool_axis_endstop T0]
+x_pin: ^tool_0:PB8
+# y_pin: ^tool_0:PB8
+
 [tool T0]
 tool_number: 0
-x_endstop_pin: ^tool_0:PB8
-# y_endstop_pin: ^tool_0:PB8
 ...
+```
+
+```
+[tool_axis_endstop T1]
+x_pin: ^tool_1:PB8
+# y_pin: ^tool_1:PB8
 
 [tool T1]
 tool_number: 1
-x_endstop_pin: ^tool_1:PB8
-# y_endstop_pin: ^tool_1:PB8
 ...
 ```
 
@@ -67,18 +73,18 @@ If the probe pin and endstop pin share the same physical pin (e.g., PB8 on EBB36
 The minimal migration requires 3 config changes:
 
 1. Change `[stepper_x] endstop_pin` from a direct pin to `toolchanger_x:x_virtual_endstop`
-2. Add `x_endstop_pin` (and optionally `y_endstop_pin`) to each `[tool Tn]` section
+2. Add `[tool_axis_endstop Tn]` sections for each tool with `x_pin` (and optionally `y_pin`)
 3. (Optional) Add an unnamed `[tool_axis_endstop]` section for global defaults
 
 ## Backward Compatibility
 
-If no `[tool Tn]` sections define `x_endstop_pin` / `y_endstop_pin`, the virtual chip is never created and the printer behaves exactly as before — no changes to existing functionality.
+If no `[tool_axis_endstop]` sections are defined, the virtual chip is never created and the printer behaves exactly as before — no changes to existing functionality.
 
 Existing `[tool_probe Tn]` / `[tool_probe_endstop]` for Z probing continues to work unchanged.
 
 ## Validation
 
-At `klippy:connect`, the extension validates that every registered tool has its X and Y endstop pins defined. If any tool is missing its endstop pin, startup is blocked with a clear error listing which tools are missing.
+At `klippy:connect`, the extension validates that every registered tool has its X and Y endstop pins defined. If any tool is missing its `[tool_axis_endstop Tn]` section, startup is blocked with a clear error listing which tools are missing.
 
 ## Commands
 
