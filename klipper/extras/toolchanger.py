@@ -228,10 +228,22 @@ class Toolchanger:
 
     def _validate_axis_endstop_coverage(self):
         """Validate that all tools have endstop pins defined when routing is active."""
+        toolhead = self.printer.lookup_object('toolhead')
+        kin = toolhead.get_kinematics()
         for axis in ('x', 'y'):
             chip_name = 'toolchanger_%c' % (axis,)
             router = self.printer.lookup_object(chip_name, None)
             if router is None:
+                continue
+            # Only validate if the stepper rail actually references
+            # the virtual chip (user intentionally enabled routing).
+            rail = getattr(kin, 'rail_' + axis, None)
+            if rail is None or not (
+                    rail.endstop_pin.lstrip('^!')
+                    .startswith(chip_name + ':')):
+                continue
+            # Global default covers all tools — skip per-tool check.
+            if router.default_endstop is not None:
                 continue
             missing = [str(tn) for tn in self.tools
                        if not router.has_endstop(tn)]
