@@ -1,11 +1,11 @@
-# Support for toolchnagers
+# Support for toolchangers
 #
 # Copyright (C) 2023 Viesturs Zarins <viesturz@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import ast, bisect, logging
-from unittest.mock import sentinel
+
 from . import tool_probe_endstop
 
 STATUS_UNINITALIZED = 'uninitialized'
@@ -212,18 +212,42 @@ class Toolchanger:
         self.status = STATUS_UNINITALIZED
         self.active_tool = None
         self.gcode_transform.next_transform = self.gcode_move.set_move_transform(self.gcode_transform, force=True)
+        self._validate_axis_endstop_coverage()
+
+    def _validate_axis_endstop_coverage(self):
+        """Validate that all tools have endstop pins defined when routing is active."""
+        for axis in ('x', 'y'):
+            chip_name = 'toolchanger_%c' % (axis,)
+            router = self.printer.lookup_object(chip_name, None)
+            if router is None:
+                continue
+            missing = [str(tn) for tn in self.tools
+                       if not router.has_endstop(tn)]
+            if missing:
+                raise self.printer.config_error(
+                    "Per-tool %s endstop routing active but tool(s) %s "
+                    "have no %s_pin in [tool_axis_endstop TN] section"
+                    % (axis.upper(), ', '.join(missing), axis))
 
     def _handle_command_error(self):
         self.status = STATUS_UNINITALIZED
         self.tool_missing_helper.deactivate()
         self.active_tool = None
         self.gcode_transform.tool = None
+        for axis in ('x', 'y'):
+            router = self.printer.lookup_object('toolchanger_%c' % (axis,), None)
+            if router:
+                router.set_active_tool(None)
 
     def _handle_shutdown(self):
         self.status = STATUS_UNINITALIZED
         self.tool_missing_helper.deactivate_at_time(_FUTURE)
         self.active_tool = None
         self.gcode_transform.tool = None
+        for axis in ('x', 'y'):
+            router = self.printer.lookup_object('toolchanger_%c' % (axis,), None)
+            if router:
+                router.set_active_tool(None)
 
     def get_status(self, eventtime):
         return {**self.params,
@@ -542,10 +566,10 @@ class Toolchanger:
     def note_detect_change(self, tool, eventtime):
         detected = None
         detected_names = []
-        for tool in self.tools.values():
-            if tool.detect_state == DETECT_PRESENT:
-                detected = tool
-                detected_names.append(tool.name)
+        for t in self.tools.values():
+            if t.detect_state == DETECT_PRESENT:
+                detected = t
+                detected_names.append(t.name)
         if len(detected_names) > 1:
             detected = None
         self.detected_tool = detected
@@ -604,6 +628,13 @@ class Toolchanger:
         if self.tool_probe_endstop:
             probe = tool.probe if tool else None
             self.tool_probe_endstop.set_active_probe(probe)
+        # Route axis endstops to the active tool
+        for axis in ('x', 'y'):
+            chip_name = 'toolchanger_%c' % (axis,)
+            router = self.printer.lookup_object(chip_name, None)
+            if router:
+                tn = tool.tool_number if tool else None
+                router.set_active_tool(tn)
         if self.active_tool:
             self.active_tool.activate()
 
@@ -871,4 +902,6 @@ def load_config(config):
 
 
 def load_config_prefix(config):
-    return Toolchanger(config)
+    # Per-tool toolchanger sections are not supported;
+    # all tools are defined via [tool Tn] sections in tool.py
+    return None

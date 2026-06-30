@@ -1,4 +1,4 @@
-# Support for toolchnagers
+# Support for toolchangers
 #
 # Copyright (C) 2023 Viesturs Zarins <viesturz@gmail.com>
 #
@@ -10,7 +10,6 @@ class Tool:
 
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.params = config.get_prefix_options('params_')
         self.gcode_macro = self.printer.load_object(config, 'gcode_macro')
 
         self.name = config.get_name()
