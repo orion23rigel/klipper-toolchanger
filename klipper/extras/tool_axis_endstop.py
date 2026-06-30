@@ -96,7 +96,6 @@ class ToolAxisEndstop:
     def get_steppers(self):
         return list(self._steppers)
 
-
     def has_endstop(self, tool_number):
         """Public accessor used by validation check."""
         return tool_number in self._endstops
