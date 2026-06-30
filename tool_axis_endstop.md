@@ -20,30 +20,34 @@ This is the same pattern already used for per-tool Z probing via `tool_probe_end
 
 ### printer.cfg
 
-Change the stepper X endstop pin to use the virtual chip:
+Change the stepper X endstop pin to use the virtual chip. Keep `position_endstop` as the global default — it applies unless a tool overrides it:
 
 ```
 [stepper_x]
 endstop_pin: toolchanger_x:x_virtual_endstop
+position_endstop: 107
 
 [stepper_y]
 endstop_pin: toolchanger_y:y_virtual_endstop
+position_endstop: 107
 ```
 
 ### Per-tool endstop definitions
 
-Add a `[tool_axis_endstop Tn]` section for each tool:
+Add a `[tool_axis_endstop Tn]` section for each tool. Optionally set `position_endstop` to override the global default for this tool:
 
 ```
 [tool_axis_endstop T0]
 x_pin: tool_0:PB8
 # y_pin: tool_0:PB8
+# position_endstop: 107.5
 ```
 
 ```
 [tool_axis_endstop T1]
 x_pin: tool_1:PB8
 # y_pin: tool_1:PB8
+# position_endstop: 106.8
 ```
 
 ### Optional global defaults
@@ -64,7 +68,7 @@ If the probe pin and endstop pin share the same physical pin (e.g., PB8 on EBB36
 
 The minimal migration requires 3 config changes:
 
-1. Change `[stepper_x] endstop_pin` from a direct pin to `toolchanger_x:x_virtual_endstop`
+1. Change `[stepper_x] endstop_pin` from a direct pin to `toolchanger_x:x_virtual_endstop`. Keep `position_endstop` unchanged — it remains the global default
 2. Add `[tool_axis_endstop Tn]` sections for each tool with `x_pin` (and optionally `y_pin`)
 3. (Optional) Add an unnamed `[tool_axis_endstop]` section for global defaults
 

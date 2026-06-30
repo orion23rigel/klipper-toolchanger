@@ -28,10 +28,15 @@ class ToolAxisEndstop:
         self.default_endstop = None
         self._endstops = {}       # tool_number -> MCU_endstop
         self._steppers = []
+        self._rail = None
+        self._default_position = 0.0
+        self._position_endstop_overrides = {}  # tool_number -> position
 
         ppins = printer.lookup_object('pins')
         ppins.register_chip(self.chip_name, self)
         printer.add_object(self.chip_name, self)
+        printer.register_event_handler(
+            'klippy:connect', self._handle_connect)
 
     def setup_pin(self, pin_type, pin_params):
         """Called by Klipper when a stepper references the virtual pin.
@@ -55,10 +60,24 @@ class ToolAxisEndstop:
         if self.active_mcu_endstop is None:
             self.active_mcu_endstop = mcu_endstop
 
+    def _handle_connect(self):
+        toolhead = self.printer.lookup_object('toolhead')
+        kin = toolhead.get_kinematics()
+        rail = getattr(kin, 'rail_' + self.axis_name, None)
+        if rail is not None:
+            self._rail = rail
+            self._default_position = rail.position_endstop
+
     def set_active_tool(self, tool_number):
         """Switch routing to the active tool's endstop, or fall back to default."""
         self.active_mcu_endstop = self._endstops.get(
             tool_number, self.default_endstop)
+        if self._rail is not None:
+            if tool_number in self._position_endstop_overrides:
+                self._rail.position_endstop = \
+                    self._position_endstop_overrides[tool_number]
+            else:
+                self._rail.position_endstop = self._default_position
 
     def add_stepper(self, stepper):
         """Forward stepper to all registered endstops (CoreXY cross-wiring).
@@ -77,12 +96,6 @@ class ToolAxisEndstop:
     def get_steppers(self):
         return list(self._steppers)
 
-    def get_position_endstop(self):
-        if self.active_mcu_endstop:
-            return self.active_mcu_endstop.get_position_endstop()
-        if self.default_endstop:
-            return self.default_endstop.get_position_endstop()
-        return 0.0
 
     def has_endstop(self, tool_number):
         """Public accessor used by validation check."""
@@ -120,10 +133,6 @@ def load_config(config):
     virtual chip is never created and behavior is unchanged.
     """
     printer = config.get_printer()
-    # Read position_endstop (if present) so Klipper's unused-options
-    # check does not flag it — the actual value is forwarded at runtime
-    # from the active tool's MCU_endstop via get_position_endstop().
-    config.getfloat('position_endstop', None)
     x_default = config.get('x_default_pin', None)
     y_default = config.get('y_default_pin', None)
 
@@ -171,6 +180,8 @@ def load_config_prefix(config):
     x_pin = config.get('x_pin', None)
     y_pin = config.get('y_pin', None)
 
+    position_endstop = config.getfloat('position_endstop', None)
+
     for axis, pin in (('x', x_pin), ('y', y_pin)):
         if pin is None:
             continue
@@ -182,5 +193,7 @@ def load_config_prefix(config):
             pin.replace('^', '').replace('!', ''))
         mcu_endstop = ppins.setup_pin('endstop', pin)
         router.add_endstop(tool_number, mcu_endstop)
+        if position_endstop is not None:
+            router._position_endstop_overrides[tool_number] = position_endstop
 
     return printer.lookup_object('toolchanger', None)
