@@ -829,7 +829,7 @@ class Toolchanger:
             if not tool:
                 raise gcmd.error(f"Tool #{tool_number} is not assigned")
         if tool is None:
-            if default == sentinel:
+            if default is self.sentinel:
                 raise gcmd.error('Missing TOOL=<name> or T=<number>')
             tool = default
         return tool
