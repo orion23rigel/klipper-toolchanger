@@ -23,7 +23,8 @@ primary_branch: main
 Add the [macros.cfg](/macros.cfg) to your printer config.
 
 ## Changelog
-* 2026.6.26 - Add detection_debounce config option to filter noisy tool detection pins.
+ * 2026.6.30 - Add per-tool X/Y endstop routing via `tool_axis_endstop.py` — any tool can home X (and Y) independently.
+ * 2026.6.26 - Add detection_debounce config option to filter noisy tool detection pins.
 * 2026.6.26 - Add temperature_wait_threshold to skip redundant M109 waits when already at target temperature.
 * 2026.2.15 - Bring back the adjust Z after nozzle homing.
 * 2026.2.8
@@ -47,5 +48,6 @@ bash ~/klipper-toolchanger/install.sh
 
 * [Toolchanger](/toolchanger.md) - tool management support.
 * [Tool probe](/tool_probe.md) - per tool Z probe.
+* [Tool axis endstop](/tool_axis_endstop.md) - per tool X/Y endstop routing for homing.
 * [Rounded path](/rounded_path.md) - rounds the travel path corners for fast non-print moves.
 * [Tools calibrate](/tools_calibrate.md) - support for contact based XYZ offset calibration probes, including optional bed-position tool probe offset calibration.
