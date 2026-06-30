@@ -7,6 +7,7 @@
 import ast, bisect, logging
 
 from . import tool_probe_endstop
+from . import tool_axis_endstop
 
 STATUS_UNINITALIZED = 'uninitialized'
 STATUS_INITIALIZING = 'initializing'
@@ -147,6 +148,14 @@ class Toolchanger:
         self.next_change_id = 1
         self.current_change_id = -1
         self.gcode_transform = ToolGcodeTransform()
+
+        # Proactively create axis endstop routers so pin chips are
+        # available before any stepper config references them.
+        for axis in ('x', 'y'):
+            chip_name = 'toolchanger_%c' % (axis,)
+            router = self.printer.lookup_object(chip_name, None)
+            if router is None:
+                tool_axis_endstop.ToolAxisEndstop(self.printer, axis)
 
         self.printer.register_event_handler("gcode:command_error",
                                             self._handle_command_error)
