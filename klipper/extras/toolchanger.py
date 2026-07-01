@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import bisect, logging
+import ast, bisect, logging
 
 from . import tool_probe_endstop
 
@@ -949,14 +949,13 @@ def get_params_dict(config):
     result = {}
     for option in config.get_prefix_options('params_'):
         raw = config.get(option)
-        # Try numeric types first, then string
         try:
-            result[option] = float(raw)
-        except ValueError:
+            result[option] = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
             try:
-                result[option] = int(raw)
+                result[option] = float(raw)
             except ValueError:
-                result[option] = raw
+                result[option] = int(raw) if raw.isdigit() else raw
     return result
 
 
