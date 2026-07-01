@@ -309,7 +309,9 @@ class Toolchanger:
 
     cmd_INITIALIZE_TOOLCHANGER_help = "Initialize the toolchanger"
     def cmd_INITIALIZE_TOOLCHANGER(self, gcmd):
-        tool = self.gcmd_tool(gcmd, self.detected_tool)
+        tool = self.gcmd_tool(gcmd, None)
+        if tool is None:
+            tool = self.require_detected_tool(gcmd.respond_info)
         was_error  = self.status == STATUS_ERROR
         self.initialize(tool)
         if was_error and gcmd.get_int("RECOVER", default=0) == 1:
@@ -433,7 +435,8 @@ class Toolchanger:
             self.run_gcode('initialize_gcode', self.initialize_gcode, extra_context)
 
         if select_tool or self.has_detection:
-            self._configure_toolhead_for_tool(select_tool)
+            configure_tool = select_tool if select_tool else (self.detected_tool if self.detected_tool else self.require_detected_tool(lambda msg: None))
+            self._configure_toolhead_for_tool(configure_tool)
             if select_tool:
                 self.run_gcode('after_change_gcode', select_tool.after_change_gcode, extra_context)
                 self.gcode_transform.tool = select_tool
