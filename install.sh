@@ -1,7 +1,7 @@
 #!/bin/bash
 
-KLIPPER_PATH="${HOME}/klipper"
-INSTALL_PATH="${HOME}/klipper-toolchanger"
+KLIPPER_PATH="${KLIPPER_PATH:-${HOME}/klipper}"
+INSTALL_PATH="${INSTALL_PATH:-${HOME}/klipper-toolchanger}"
 
 set -eu
 export LC_ALL=C
@@ -9,6 +9,12 @@ export LC_ALL=C
 function preflight_checks {
     if [ "$EUID" -eq 0 ]; then
         echo "[PRE-CHECK] This script must not be run as root!"
+        exit -1
+    fi
+
+    if [ ! -d "$KLIPPER_PATH" ]; then
+        echo "[ERROR] Klipper path '$KLIPPER_PATH' does not exist!"
+        echo "Set KLIPPER_PATH environment variable if Klipper is installed elsewhere."
         exit -1
     fi
 
@@ -41,6 +47,10 @@ function check_download {
 
 function link_extension {
     echo "[INSTALL] Linking extension to Klipper..."
+    if [ ! -d "${KLIPPER_PATH}/klippy/extras/" ]; then
+        echo "[ERROR] Klipper extras directory not found at ${KLIPPER_PATH}/klippy/extras/"
+        exit -1
+    fi
     for file in "${INSTALL_PATH}"/klipper/extras/*.py; do ln -sfn "${file}" "${KLIPPER_PATH}/klippy/extras/"; done
 }
 

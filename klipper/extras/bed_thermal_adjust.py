@@ -84,6 +84,8 @@ class BedThermalAdjust:
     def to_heater_temp(self, surface_temp):
         if surface_temp <= 0:
             return surface_temp
+        if abs(1.0 - self.temp_drop) < 1e-9:
+            return surface_temp
         # Inverse of the above
         # s = h - (h - AA) * D = h - h*D + AA*D = h * (1 - D) + AA * D
         # h = (s - AA * D) / (1 - D)

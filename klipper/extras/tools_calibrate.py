@@ -3,7 +3,7 @@
 # This module has been adapted from code written by Kevin O'Connor <kevin@koconnor.net> and Martin Hierholzer <martin@hierholzer.info>
 # Sourced from https://github.com/ben5459/Klipper_ToolChanger/blob/master/probe_multi_axis.py
 
-import logging
+import logging, re
 
 direction_types = {'x+': [0, +1], 'x-': [0, -1], 'y+': [1, +1], 'y-': [1, -1],
                    'z+': [2, +1], 'z-': [2, -1]}
@@ -150,11 +150,27 @@ class ToolsCalibrate:
 
     def cmd_TOOL_CALIBRATE_SAVE_TOOL_OFFSET(self, gcmd):
         if not self.last_result:
-            gcmd.error(
+            raise gcmd.error(
                 "No offset result, please run TOOL_CALIBRATE_TOOL_OFFSET first")
-            return
         section_name = gcmd.get("SECTION")
         param_name = gcmd.get("ATTRIBUTE")
+        if not section_name or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', section_name):
+            raise gcmd.error("Invalid SECTION name")
+        if not param_name or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', param_name):
+            raise gcmd.error("Invalid ATTRIBUTE name")
+        # Reject unsafe section/attribute combinations
+        unsafe_sections = {'stepper_x', 'stepper_y', 'stepper_z', 'extruder',
+                           'extruder0', 'heater_bed', 'temperature_sensor',
+                           'mcu', 'mcu toolhead', 'output_pin', 'output_pin',
+                           'force_move', 'idle_timeout', 'pause_resume',
+                           'virtual_sdcard', 'display', 'gcode_move'}
+        unsafe_attrs = {'max_temp', 'min_temp', 'min_extrude_temp',
+                        'power', 'step_pin', 'dir_pin', 'enable_pin',
+                        'microsteps', 'rotation_distance', 'pressure_advance',
+                        'idle_timeout', 'pwm_value'}
+        section_base = section_name.split()[0] if ' ' in section_name else section_name
+        if section_base in unsafe_sections or param_name in unsafe_attrs:
+            raise gcmd.error("Cannot modify safety-critical configuration section/attribute")
         template = gcmd.get("VALUE", "{x:0.6f}, {y:0.6f}, {z:0.6f}")
         value = template.format(x=self.last_result[0], y=self.last_result[1],
                                 z=self.last_result[2])
@@ -315,9 +331,9 @@ class PrinterProbeMultiAxis:
 
     def setup_pin(self, pin_type, pin_params):
         if pin_type != 'endstop' or pin_params['pin'] != 'xy_virtual_endstop':
-            raise pins.error("Probe virtual endstop only useful as endstop pin")
+            raise self.printer.config_error("Probe virtual endstop only useful as endstop pin")
         if pin_params['invert'] or pin_params['pullup']:
-            raise pins.error("Can not pullup/invert probe virtual endstop")
+            raise self.printer.config_error("Can not pullup/invert probe virtual endstop")
         return self.mcu_probe
 
     def get_lift_speed(self, gcmd=None):

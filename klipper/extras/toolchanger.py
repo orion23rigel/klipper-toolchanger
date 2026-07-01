@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import ast, bisect, logging
+import bisect, logging
 
 from . import tool_probe_endstop
 
@@ -24,7 +24,7 @@ DETECT_UNAVAILABLE = "unavailable"
 DETECT_ABSENT = "absent"
 DETECT_PRESENT = "mounted"
 
-_FUTURE = 9999999999999999.
+_FUTURE = float('inf')
 
 class Interval:
     def __init__(self, start):
@@ -327,7 +327,7 @@ class Toolchanger:
             restore_axis = gcmd.get('RESTORE_AXIS', tool.t_command_restore_axis)
             self.select_tool(gcmd, tool, restore_axis)
             return
-        tool_nr = gcmd.get_int('T', None)
+        tool_nr = gcmd.get_int('T', None, minval=0)
         if tool_nr is not None:
             tool = self.lookup_tool(tool_nr)
             if not tool:
@@ -394,7 +394,7 @@ class Toolchanger:
             self.initialize(self.detected_tool)
         if self.status != STATUS_READY:
             raise gcmd.error(
-                "Cannot enter docking mode, toolchanger status is %s, reason: %s" % (self.status, self.error_message))
+                "Cannot enter docking mode, toolchanger not ready")
         self.status = STATUS_CHANGING
         self.tool_missing_helper.deactivate()
         self._save_state("", None)
@@ -403,7 +403,7 @@ class Toolchanger:
     def cmd_EXIT_DOCKING_MODE(self, gcmd):
         if self.status != STATUS_CHANGING:
             raise gcmd.error(
-                "Cannot exit docking mode, toolchanger status is %s, reason: %s" % (self.status, self.error_message))
+                "Cannot exit docking mode, toolchanger not in docking mode")
 
         self._restore_state_and_transform(self.active_tool)
         self.status = STATUS_READY
@@ -458,7 +458,7 @@ class Toolchanger:
             self.initialize(self.detected_tool)
         if self.status != STATUS_READY:
             raise gcmd.error(
-                "Cannot select tool, toolchanger status is %s, reason: %s" % (self.status, self.error_message))
+                "Cannot select tool, toolchanger not ready")
 
         if self.active_tool == tool:
             gcmd.respond_info(
@@ -759,7 +759,28 @@ class Toolchanger:
     def cmd_SET_TOOL_PARAMETER(self, gcmd):
         tool = self._get_tool_from_gcmd(gcmd)
         name = gcmd.get("PARAMETER")
-        value = ast.literal_eval(gcmd.get("VALUE"))
+        value_str = gcmd.get("VALUE")
+        if name in tool.params:
+            expected_type = type(tool.params[name])
+            if expected_type == float:
+                try:
+                    value = float(value_str)
+                except ValueError:
+                    raise gcmd.error("Parameter '%s' requires a numeric value" % (name,))
+            elif expected_type == int:
+                try:
+                    value = int(value_str)
+                except ValueError:
+                    raise gcmd.error("Parameter '%s' requires an integer value" % (name,))
+            elif expected_type == bool:
+                value = value_str.lower() in ('true', '1', 'yes')
+            else:
+                value = value_str
+        else:
+            try:
+                value = float(value_str)
+            except ValueError:
+                value = value_str
         tool.set_parameter(name, value)
 
     def cmd_RESET_TOOL_PARAMETER(self, gcmd):
@@ -851,7 +872,7 @@ class Toolchanger:
 
     def _ensure_toolchanger_ready(self, gcmd):
         if self.status not in [STATUS_READY, STATUS_CHANGING]:
-            raise gcmd.error(f"VERIFY_TOOL_DETECTED: toolchanger not ready: status = {self.status}")
+            raise gcmd.error("VERIFY_TOOL_DETECTED: toolchanger not ready")
 
 class FanSwitcher:
     def __init__(self, toolchanger, config):
@@ -927,12 +948,15 @@ class ToolGcodeTransform:
 def get_params_dict(config):
     result = {}
     for option in config.get_prefix_options('params_'):
+        raw = config.get(option)
+        # Try numeric types first, then string
         try:
-            result[option] = ast.literal_eval(config.get(option))
-        except ValueError as e:
-            raise config.error(
-                "Option '%s' in section '%s' is not a valid literal" % (
-                    option, config.get_name()))
+            result[option] = float(raw)
+        except ValueError:
+            try:
+                result[option] = int(raw)
+            except ValueError:
+                result[option] = raw
     return result
 
 

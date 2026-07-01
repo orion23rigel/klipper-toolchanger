@@ -148,7 +148,7 @@ def load_config(config):
         mcu_endstop = ppins.setup_pin('endstop', default_pin)
         router.set_default_endstop(mcu_endstop)
 
-    return printer.lookup_object('toolchanger', None)
+    return None
 
 
 def load_config_prefix(config):
@@ -195,4 +195,4 @@ def load_config_prefix(config):
         if position_endstop is not None:
             router._position_endstop_overrides[tool_number] = position_endstop
 
-    return printer.lookup_object('toolchanger', None)
+    return None

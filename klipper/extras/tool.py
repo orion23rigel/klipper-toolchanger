@@ -108,8 +108,9 @@ class Tool:
             self.heater = self.extruder.get_heater()
             self.heater_name = self.extruder_name
         if self.fan_name:
-            self.fan = self.printer.lookup_object(self.fan_name,
-                      self.printer.lookup_object("fan_generic " + self.fan_name, None))
+            self.fan = self.printer.lookup_object(self.fan_name, None)
+            if self.fan is None:
+                self.fan = self.printer.lookup_object("fan_generic " + self.fan_name, None)
 
     def _handle_detect(self, eventtime, is_triggered):
         if self.detection_debounce <= 0.:
@@ -145,16 +146,16 @@ class Tool:
                 'extruder_stepper': self.extruder_stepper_name,
                 'fan': self.fan_name,
                 'active': self.main_toolchanger.get_selected_tool() == self,
-                'gcode_x_offset': self.gcode_x_offset if self.gcode_x_offset else 0.0,
-                'gcode_y_offset': self.gcode_y_offset if self.gcode_y_offset else 0.0,
-                'gcode_z_offset': self.gcode_z_offset if self.gcode_z_offset else 0.0,
+                'gcode_x_offset': self.gcode_x_offset if self.gcode_x_offset is not None else 0.0,
+                'gcode_y_offset': self.gcode_y_offset if self.gcode_y_offset is not None else 0.0,
+                'gcode_z_offset': self.gcode_z_offset if self.gcode_z_offset is not None else 0.0,
                 }
 
     def get_offset(self):
         return [
-            self.gcode_x_offset if self.gcode_x_offset else 0.0,
-            self.gcode_y_offset if self.gcode_y_offset else 0.0,
-            self.gcode_z_offset if self.gcode_z_offset else 0.0,
+            self.gcode_x_offset if self.gcode_x_offset is not None else 0.0,
+            self.gcode_y_offset if self.gcode_y_offset is not None else 0.0,
+            self.gcode_z_offset if self.gcode_z_offset is not None else 0.0,
         ]
 
     cmd_ASSIGN_TOOL_help = 'Assign tool to tool number'

@@ -13,7 +13,7 @@ MAX_POLL_FREQ = 20.0                        # Hz - upper ceiling we will clamp t
 FREEFALL_MS2   = 9.80665 * 1000.0           # 1 g in mm/s^2
 _DWELL_GRAB    = 0.1                        # dwell for one-shot queries
 _RATE_CHOICES  = adxl345.QUERY_RATES        # supported BW_RATE values
-_STATISTIC_FN  = statistics.median
+_STATISTIC_FN  = statistics.median  # deprecated — use self.stat_fn on ToolDropDetection
 # ───────────────────────────── helpers ────────────────────────────────
 
 def _vector_to_angles(vector, defaults = {}):
@@ -24,21 +24,26 @@ def _vector_to_angles(vector, defaults = {}):
     roll         = math.degrees(math.atan2(ay, az))                   - defaults.get('base_roll', 0.0)
     return ((pitch + 180) % 360) - 180, ((roll + 180) % 360) - 180
 
-def _vector_angle(v0, defaults = {}): # 5$ if you can manage to get a divide by 0, not guarding it.
+def _vector_angle(v0, defaults = {}):
     v1 = defaults.get('base_vector', (0.0, -1.0, 0.0))
     dot = sum(a*b for a,b in zip(v0, v1))
     mag0 = math.sqrt(sum(a*a for a in v0))
     mag1 = math.sqrt(sum(a*a for a in v1))
-    arg = max(-1.0, min(1.0, dot/(mag0*mag1)))# 0.9 + 0.1 = 1.0000001 thats pretty based.... -> math.acos(1.0000001) is apparently illegal
+    if mag0 == 0.0 or mag1 == 0.0:
+        return 0.0
+    arg = max(-1.0, min(1.0, dot/(mag0*mag1)))
     return math.degrees(math.acos(arg))
 
-def _angle_diffrence(a0, a1):
+def _angle_difference(a0, a1):
     diff = ((a0 - a1 + 180) % 360) - 180
     return diff
 
 # ---------------------------------------------------------------------------
 def _raw_to_vector(raw_vector, defaults = {}):
-    gx, gy, gz = (axis / 1.0 / (defaults.get('base_g', 1.0) * FREEFALL_MS2) for axis in raw_vector)
+    base_g = defaults.get('base_g', 1.0)
+    if base_g == 0.0:
+        base_g = 1.0
+    gx, gy, gz = (axis / 1.0 / (base_g * FREEFALL_MS2) for axis in raw_vector)
     return (gx, gy, gz)
 
 def _vector_to_magnitude(vector):
@@ -50,15 +55,17 @@ def _strip_timestamps(samples):
     """ .accel_x, .accel_y, .accel_z, .time -> plain (x, y, z) tuples"""
     return [(s.accel_x, s.accel_y, s.accel_z) for s in samples]
 
-def _average_samples(samples: Sequence[Tuple[float, float, float]], amount: int = 0):
+def _average_samples(samples: Sequence[Tuple[float, float, float]], amount: int = 0, stat_fn=None):
     """Collapse a list [(x y z)] to (x,y,z) | first <-(-) amount (+)-> last"""
     if not samples:
         return (0.0, 0.0, 0.0)
     # pick the window according to the rule above
     window = (samples[:amount] if amount > 0 else samples[amount:] if amount < 0 else samples)
-
+    if not window:
+        return (0.0, 0.0, 0.0)
+    fn = stat_fn if stat_fn is not None else _STATISTIC_FN
     xs, ys, zs = zip(*window)
-    return (_STATISTIC_FN(xs), _STATISTIC_FN(ys), _STATISTIC_FN(zs))
+    return (fn(xs), fn(ys), fn(zs))
 
 def _parse_default_line(raw: str) -> Dict[str, _Number]:
     """
@@ -146,8 +153,8 @@ class ToolDropDetection:
         self.current_samples        = cfg.getint  ('current_samples',       10,      minval=0)
 
         statistics_mode = {'median': statistics.median,'mean'  : statistics.mean,}
-        global _STATISTIC_FN 
-        _STATISTIC_FN = cfg.getchoice('samples_result', statistics_mode, 'median')
+        self.stat_fn = cfg.getchoice('samples_result', statistics_mode, 'median')
+        # Remove global mutation — stat_fn is now per-instance
         # ────| ensure valid if not errored before.
         self.def_rate = min(_RATE_CHOICES, key=lambda x: abs(x - req_rate))
         if self.def_rate != req_rate:
@@ -353,11 +360,10 @@ class ToolDropDetection:
             
 
     def _reset(self):
-        _ = None
-        #for n in self._targets(None):
-            #p = self.pollers.pop(n, None)
-            #if p:
-                #p.stop();
+        for name in list(self.pollers.keys()):
+            p = self.pollers.pop(name, None)
+            if p:
+                p.stop()
     # ─────────────────────────────────────────────────────────────────────────────
 
     cmd_TDD_START_help = 'optional [ACCEL=…] [LIMIT_G=<g-force>] [LIMIT_ANGLE=<deg>] [LIMIT_PITCH=<deg>] [LIMIT_ROLL=<deg>] Start crash detection with optional limits'
@@ -576,6 +582,7 @@ class _Poller:
         self.drop_timer   = None       # used for hit-and-run logic
 
         self.defaults  = parent.defaults[name]
+        self._stat_fn  = parent.stat_fn
         # ─── WINDOW FOR AVREAGING─────────────────────────────────────────────────────────
         self.xyz_history: Deque[Tuple[float,float,float]] = collections.deque(maxlen=max(1, int(parent.session_time * freq)))
 
@@ -604,7 +611,7 @@ class _Poller:
     def _update_reference(self, xyz_samples):
         if not xyz_samples:
             return
-        avrg        = _average_samples(xyz_samples)
+        avrg        = _average_samples(xyz_samples, stat_fn=self._stat_fn)
         raw_vec     = _raw_to_vector(avrg, self.defaults)
         pitch, roll = _vector_to_angles(raw_vec, {})
         mag_g       = _vector_to_magnitude(raw_vec)
@@ -638,8 +645,8 @@ class _Poller:
         # ─── UPDATE STATE ───────────────────────────────────────
     def _update_session(self, xyz_samples):
         session = self.parent._data[self.short]['session']
-        self.xyz_history.append(_average_samples(xyz_samples)) # add to rolling history
-        sess_raw = _average_samples(self.xyz_history)
+        self.xyz_history.append(_average_samples(xyz_samples, stat_fn=self._stat_fn)) # add to rolling history
+        sess_raw = _average_samples(self.xyz_history, stat_fn=self._stat_fn)
 
         raw_mags = (_vector_to_magnitude(_raw_to_vector(v, self.defaults)) for v in xyz_samples)
         max_raw  = max(raw_mags)  # highest magnitude in this batch
@@ -776,7 +783,7 @@ class _Poller:
 
         xyz_samples = _strip_timestamps(samples)
         
-        current_average = _average_samples(xyz_samples, -self.parent.current_samples)
+        current_average = _average_samples(xyz_samples, -self.parent.current_samples, stat_fn=self._stat_fn)
     
         # ────────────────────
         cur_vector          = _raw_to_vector(current_average, self.defaults)
