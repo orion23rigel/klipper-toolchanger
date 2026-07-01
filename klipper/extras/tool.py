@@ -127,9 +127,6 @@ class Tool:
         self._apply_detect(eventtime, is_triggered)
         return self.printer.get_reactor().NEVER
 
-    def is_detection_pending(self):
-        return self._detect_timer is not None
-
     def _apply_detect(self, eventtime, is_triggered):
         self.detect_state = toolchanger.DETECT_ABSENT if is_triggered else toolchanger.DETECT_PRESENT
         self.toolchanger.note_detect_change(self, eventtime)
