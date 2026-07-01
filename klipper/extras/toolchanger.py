@@ -599,7 +599,22 @@ class Toolchanger:
         self.detected_tool = detected
         self.tool_missing_helper.note_tool_change(eventtime)
 
+    def _wait_for_detection_debounce(self, gcmd=None):
+        reactor = self.printer.get_reactor()
+        timeout = max(
+            (t.detection_debounce for t in self.tools.values()),
+            default=0.0
+        ) + 0.5
+        max_wait = reactor.monotonic() + max(timeout, 1.0)
+        while reactor.monotonic() < max_wait:
+            if not any(t.is_detection_pending() for t in self.tools.values()):
+                return
+            reactor.pause(reactor.monotonic() + 0.005)
+        if gcmd:
+            gcmd.respond_info("Warning: detection debounce did not settle")
+
     def require_detected_tool(self, respond_info):
+        self._wait_for_detection_debounce()
         if self.detected_tool is not None:
             return self.detected_tool
         detected = None
