@@ -494,6 +494,8 @@ class Toolchanger:
             if tool is not None:
                 self.run_gcode('tool.pickup_gcode',
                                tool.pickup_gcode, extra_context)
+                if self.has_detection:
+                    self._wait_for_detection_debounce(gcmd)
                 if self.has_detection and self.verify_tool_pickup:
                     self.validate_detected_tool(tool, respond_info=gcmd.respond_info, raise_error=gcmd.error)
                 self.tool_missing_helper.activate()
@@ -599,6 +601,20 @@ class Toolchanger:
         self.detected_tool = detected
         self.tool_missing_helper.note_tool_change(eventtime)
 
+    def _wait_for_detection_debounce(self, gcmd=None, timeout=1.0):
+        reactor = self.printer.get_reactor()
+        max_wait = reactor.monotonic() + timeout
+        while reactor.monotonic() < max_wait:
+            pending = any(
+                t.is_detection_pending()
+                for t in self.tools.values()
+            )
+            if not pending:
+                return
+            reactor.pause(reactor.monotonic() + 0.005)
+        if gcmd:
+            gcmd.respond_info("Warning: detection debounce did not settle")
+
     def require_detected_tool(self, respond_info):
         if self.detected_tool is not None:
             return self.detected_tool
@@ -641,8 +657,7 @@ class Toolchanger:
                                                                             reactor.register_timer(timer_handler, reactor.monotonic() + 0.2 + max(0.0, print_time - toolhead.mcu.estimated_print_time(reactor.monotonic())) ))
         else:
             toolhead.wait_moves()
-            # Wait some more to allow tool sensors to update
-            reactor.pause(reactor.monotonic() + 0.2)
+            self._wait_for_detection_debounce(gcmd)
             self.validate_detected_tool(expected, respond_info=gcmd.respond_info, raise_error=gcmd.error)
 
     def _configure_toolhead_for_tool(self, tool):
