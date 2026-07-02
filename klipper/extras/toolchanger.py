@@ -439,7 +439,7 @@ class Toolchanger:
             self._configure_toolhead_for_tool(configure_tool)
             if select_tool:
                 self.run_gcode('after_change_gcode', select_tool.after_change_gcode, extra_context)
-            self.gcode_transform.tool = configure_tool
+                self.gcode_transform.tool = select_tool
             if self.require_tool_present and self.active_tool is None:
                 raise self.gcode.error(
                     '%s failed to initialize, require_tool_present set and no tool present after initialization' % (
@@ -667,9 +667,10 @@ class Toolchanger:
         if self.active_tool:
             self.active_tool.deactivate()
         self.active_tool = tool
-        if self.tool_probe_endstop:
-            probe = tool.probe if tool else None
-            self.tool_probe_endstop.set_active_probe(probe)
+        tpe = self.tool_probe_endstop or self.printer.lookup_object('probe', None)
+        if tpe:
+            probe = tpe.tool_number_to_probe.get(tool.tool_number) if tool else None
+            tpe.set_active_probe(probe)
         # Route axis endstops to the active tool
         for axis in ('x', 'y'):
             chip_name = 'toolchanger_%c' % (axis,)
