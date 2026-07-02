@@ -154,7 +154,7 @@ class ToolsCalibrate:
                 "No offset result, please run TOOL_CALIBRATE_TOOL_OFFSET first")
         section_name = gcmd.get("SECTION")
         param_name = gcmd.get("ATTRIBUTE")
-        if not section_name or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', section_name):
+        if not section_name or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_ ]*$', section_name):
             raise gcmd.error("Invalid SECTION name")
         if not param_name or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', param_name):
             raise gcmd.error("Invalid ATTRIBUTE name")
