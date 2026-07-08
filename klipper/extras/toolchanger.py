@@ -497,8 +497,17 @@ class Toolchanger:
             if tool is not None:
                 self.run_gcode('tool.pickup_gcode',
                                tool.pickup_gcode, extra_context)
-                if self.has_detection and self.verify_tool_pickup:
-                    self.validate_detected_tool(tool, respond_info=gcmd.respond_info, raise_error=gcmd.error)
+                if self.has_detection:
+                    self._wait_for_detection_debounce()
+                    if self.detected_tool != tool:
+                        pause_state = self.gcode_move.saved_states.get('PAUSE_STATE', None)
+                        if pause_state and self.last_change_gcode_offset is not None:
+                            ho = pause_state['homing_origin']
+                            n = min(3, len(ho), len(self.last_change_gcode_offset))
+                            for i in range(n):
+                                ho[i] = self.last_change_gcode_offset[i]
+                        self.current_change_id = -1
+                        return
                 self.tool_missing_helper.activate()
                 self.run_gcode('after_change_gcode',
                                tool.after_change_gcode, extra_context)
