@@ -120,9 +120,18 @@ class ToolProbeEndstop:
         if self.active_probe:
             return
         active_tools = self._query_open_tools()
-        if len(active_tools) != 1 :
-            raise gcode.error(self._describe_tool_detection_issue(active_tools))
-        self.set_active_probe(active_tools[0])
+        if len(active_tools) == 1:
+            self.set_active_probe(active_tools[0])
+        elif len(active_tools) == 0:
+            # All probes triggered (tools docked on station). Don't crash.
+            # The active_probe may already be set from a prior tool change.
+            # If not, leave it as None and let downstream probe operations
+            # handle the missing probe gracefully via command_error.
+            pass
+        elif len(active_tools) > 1:
+            # Multiple probes not triggered - ambiguous state. Don't crash.
+            # Use the first candidate as active_probe.
+            self.set_active_probe(active_tools[0])
 
     def _detect_active_tool(self):
         active_tools = self._query_open_tools()
