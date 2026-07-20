@@ -40,6 +40,7 @@ class ToolProbeEndstop:
 
         self.crash_mintime = config.getfloat('crash_mintime', 0.5, above=0.)
         self.crash_gcode = self.gcode_macro.load_template(config, 'crash_gcode', '')
+        self.probe_debounce = config.getfloat('probe_debounce', 0.5, above=0.)
         self.printer.register_event_handler("klippy:connect",
                                             self._handle_connect)
         # Register PROBE/QUERY_PROBE commands
@@ -108,6 +109,38 @@ class ToolProbeEndstop:
                 candidates.append(tool_probe)
         return candidates
 
+    def _query_open_tools_debounced(self, debounce_time=0.5):
+        reactor = self.reactor
+        print_time = self.toolhead.get_last_move_time()
+        settle_until = print_time + debounce_time
+        start_time = reactor.monotonic()
+        last_change_time = start_time
+        last_state = None
+        while reactor.monotonic() - start_time < debounce_time + 0.5:
+            print_time = self.toolhead.get_last_move_time()
+            if print_time >= settle_until:
+                break
+            current_state = {}
+            for tool_probe in self.probes:
+                triggered = tool_probe.mcu_probe.query_endstop(print_time)
+                if tool_probe.tool_number is not None:
+                    current_state[tool_probe.tool_number] = triggered
+            if current_state != last_state:
+                last_state = current_state
+                last_change_time = reactor.monotonic()
+            elif reactor.monotonic() - last_change_time >= debounce_time:
+                break
+            reactor.pause(reactor.monotonic() + 0.01)
+        self.last_query.clear()
+        candidates = []
+        for tool_probe in self.probes:
+            triggered = tool_probe.mcu_probe.query_endstop(print_time)
+            if tool_probe.tool_number is not None:
+                self.last_query[tool_probe.tool_number] = triggered
+            if not triggered:
+                candidates.append(tool_probe)
+        return candidates
+
     def _describe_tool_detection_issue(self, candidates):
         if len(candidates) == 1 :
             return 'OK'
@@ -147,7 +180,7 @@ class ToolProbeEndstop:
 
     cmd_DETECT_ACTIVE_TOOL_PROBE_help = "Detect which tool is active by identifying a probe that is NOT triggered"
     def cmd_DETECT_ACTIVE_TOOL_PROBE(self, gcmd):
-        active_tools = self._query_open_tools()
+        active_tools = self._query_open_tools_debounced(self.probe_debounce)
         if len(active_tools) == 1 :
             active = active_tools[0]
             gcmd.respond_info("Found active tool probe: %s" % (active.name))
