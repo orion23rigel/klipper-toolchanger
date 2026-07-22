@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 from . import probe
+from . import toolchanger_debounce
 
 # Virtual endstop, using a tool attached Z probe in a toolchanger setup.
 # Tool endstop change may be done either via SET_ACTIVE_TOOL_PROBE TOOL=99
@@ -15,6 +16,7 @@ class ToolProbeEndstop:
         self.name = config.get_name()
         self.probes = []
         self.tool_number_to_probe = {}
+        self._debouncers = {}
         self.last_query = {} # map from tool number to endstop state
         self.active_probe = None
         self.active_tool_number = -1
@@ -83,6 +85,8 @@ class ToolProbeEndstop:
             self.tool_number_to_probe[tool_probe.tool_number] = tool_probe
         self.probes.append(tool_probe)
         self.mcu_probe.add_mcu(tool_probe.mcu_probe)
+        self._debouncers[tool_probe] = toolchanger_debounce.Debouncer(
+            self.reactor, self.probe_debounce, lambda eventtime, triggered: None)
 
     def set_active_probe(self, tool_probe):
         if self.active_probe == tool_probe:
@@ -109,37 +113,19 @@ class ToolProbeEndstop:
                 candidates.append(tool_probe)
         return candidates
 
-    def _query_open_tools_debounced(self, debounce_time=0.5):
+    def _query_open_tools_debounced(self):
         reactor = self.reactor
-        print_time = self.toolhead.get_last_move_time()
-        settle_until = print_time + debounce_time
-        start_time = reactor.monotonic()
-        last_change_time = start_time
-        last_state = None
-        while reactor.monotonic() - start_time < debounce_time + 0.5:
+        max_wait = reactor.monotonic() + self.probe_debounce + 0.5
+        while reactor.monotonic() < max_wait:
             print_time = self.toolhead.get_last_move_time()
-            if print_time >= settle_until:
-                break
-            current_state = {}
+            now = reactor.monotonic()
             for tool_probe in self.probes:
                 triggered = tool_probe.mcu_probe.query_endstop(print_time)
-                if tool_probe.tool_number is not None:
-                    current_state[tool_probe.tool_number] = triggered
-            if current_state != last_state:
-                last_state = current_state
-                last_change_time = reactor.monotonic()
-            elif reactor.monotonic() - last_change_time >= debounce_time:
+                self._debouncers[tool_probe].note_reading(now, triggered)
+            if not any(d.is_pending() for d in self._debouncers.values()):
                 break
             reactor.pause(reactor.monotonic() + 0.01)
-        self.last_query.clear()
-        candidates = []
-        for tool_probe in self.probes:
-            triggered = tool_probe.mcu_probe.query_endstop(print_time)
-            if tool_probe.tool_number is not None:
-                self.last_query[tool_probe.tool_number] = triggered
-            if not triggered:
-                candidates.append(tool_probe)
-        return candidates
+        return self._query_open_tools()
 
     def _describe_tool_detection_issue(self, candidates):
         if len(candidates) == 1 :
@@ -180,7 +166,7 @@ class ToolProbeEndstop:
 
     cmd_DETECT_ACTIVE_TOOL_PROBE_help = "Detect which tool is active by identifying a probe that is NOT triggered"
     def cmd_DETECT_ACTIVE_TOOL_PROBE(self, gcmd):
-        active_tools = self._query_open_tools_debounced(self.probe_debounce)
+        active_tools = self._query_open_tools_debounced()
         if len(active_tools) == 1 :
             active = active_tools[0]
             gcmd.respond_info("Found active tool probe: %s" % (active.name))
