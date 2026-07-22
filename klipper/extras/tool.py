@@ -5,6 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 from . import toolchanger
+from . import toolchanger_debounce
 
 class Tool:
 
@@ -39,7 +40,8 @@ class Tool:
         detect_pin_name = config.get('detection_pin', None)
         self.detect_state = toolchanger.DETECT_UNAVAILABLE
         self.detection_debounce = self._config_getfloat(config, 'detection_debounce', 0.050)
-        self._detect_timer = None
+        self._debouncer = toolchanger_debounce.Debouncer(
+            self.printer.get_reactor(), self.detection_debounce, self._apply_detect)
         if detect_pin_name:
             self.printer.load_object(config, 'buttons').register_buttons([detect_pin_name], self._handle_detect)
             self.detect_state = toolchanger.DETECT_PRESENT
@@ -113,23 +115,10 @@ class Tool:
                 self.fan = self.printer.lookup_object("fan_generic " + self.fan_name, None)
 
     def _handle_detect(self, eventtime, is_triggered):
-        if self.detection_debounce <= 0.:
-            self._apply_detect(eventtime, is_triggered)
-            return
-        reactor = self.printer.get_reactor()
-        if self._detect_timer is not None:
-            reactor.unregister_timer(self._detect_timer)
-        self._detect_timer = reactor.register_timer(
-            lambda t: self._detect_debounced(eventtime, is_triggered),
-            reactor.monotonic() + self.detection_debounce)
-
-    def _detect_debounced(self, eventtime, is_triggered):
-        self._detect_timer = None
-        self._apply_detect(eventtime, is_triggered)
-        return self.printer.get_reactor().NEVER
+        self._debouncer.note_reading(eventtime, is_triggered)
 
     def is_detection_pending(self):
-        return self._detect_timer is not None
+        return self._debouncer.is_pending()
 
     def _apply_detect(self, eventtime, is_triggered):
         self.detect_state = toolchanger.DETECT_ABSENT if is_triggered else toolchanger.DETECT_PRESENT
