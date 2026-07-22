@@ -502,7 +502,7 @@ class Toolchanger:
                     if self.detected_tool != tool:
                         pause_state = self.gcode_move.saved_states.get('PAUSE_STATE', None)
                         if pause_state and self.last_change_gcode_offset is not None:
-                            ho = pause_state['homing_origin']
+                            ho = pause_state['homing_position']
                             n = min(3, len(ho), len(self.last_change_gcode_offset))
                             for i in range(n):
                                 ho[i] = self.last_change_gcode_offset[i]
