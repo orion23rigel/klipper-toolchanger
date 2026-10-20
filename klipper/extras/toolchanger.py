@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import ast, bisect, logging
+import ast, bisect, logging, math
 
 from . import tool_probe_endstop
 
@@ -321,13 +321,14 @@ class Toolchanger:
 
     cmd_SELECT_TOOL_help = 'Select active tool'
     def cmd_SELECT_TOOL(self, gcmd):
+        destination = self._get_toolchange_destination(gcmd)
         tool_name = gcmd.get('TOOL', None)
         if tool_name:
             tool = self.printer.lookup_object(tool_name)
             if not tool:
                 raise gcmd.error("Select tool: TOOL=%s not found" % (tool_name))
             restore_axis = gcmd.get('RESTORE_AXIS', tool.t_command_restore_axis)
-            self.select_tool(gcmd, tool, restore_axis)
+            self.select_tool(gcmd, tool, restore_axis, destination)
             return
         tool_nr = gcmd.get_int('T', None, minval=0)
         if tool_nr is not None:
@@ -335,9 +336,19 @@ class Toolchanger:
             if not tool:
                 raise gcmd.error("Select tool: T%d not found" % (tool_nr))
             restore_axis = gcmd.get('RESTORE_AXIS', tool.t_command_restore_axis)
-            self.select_tool(gcmd, tool, restore_axis)
+            self.select_tool(gcmd, tool, restore_axis, destination)
             return
         raise gcmd.error("Select tool: Either TOOL or T needs to be specified")
+
+    def _get_toolchange_destination(self, gcmd):
+        destination = [gcmd.get_float(axis, None) for axis in 'XYZ']
+        if all(value is None for value in destination):
+            return None
+        if any(value is None for value in destination):
+            raise gcmd.error("Select tool: X, Y, and Z destination must be specified together")
+        if not all(math.isfinite(value) for value in destination):
+            raise gcmd.error("Select tool: destination coordinates must be finite")
+        return destination
 
     cmd_SET_TOOL_TEMPERATURE_help = 'Set temperature for tool'
 
@@ -456,7 +467,7 @@ class Toolchanger:
                 raise self.gcode.error('%s failed to initialize, error: %s' %
                                        (self.name, self.error_message))
 
-    def select_tool(self, gcmd, tool, restore_axis):
+    def select_tool(self, gcmd, tool, restore_axis, destination=None):
         if self.status == STATUS_UNINITALIZED and self.initialize_on == INIT_FIRST_USE:
             self.initialize(self.detected_tool)
         if self.status != STATUS_READY:
@@ -482,6 +493,7 @@ class Toolchanger:
                 'pickup_tool': tool.name if tool else None,
                 'start_position': self._position_to_xyz(start_position, 'xyz'),
                 'restore_position': self._position_to_xyz(start_position, restore_axis),
+                'restore_to_destination': destination is not None,
             }
 
             before_change_gcode = self.active_tool.before_change_gcode if self.active_tool else self.default_before_change_gcode
@@ -512,7 +524,7 @@ class Toolchanger:
                 self.run_gcode('after_change_gcode',
                                tool.after_change_gcode, extra_context)
 
-            self._restore_state_and_transform(tool)
+            self._restore_state_and_transform(tool, destination)
             self.status = STATUS_READY
             if tool:
                 gcmd.respond_info(
@@ -737,6 +749,7 @@ class Toolchanger:
         self.last_change_pickup_tool = tool
         self.last_change_gcode_position = list(gcode_status['gcode_position'])
         self.last_change_gcode_offset = gcode_status['homing_origin']
+        self.last_change_absolute_coord = gcode_status['absolute_coordinates']
         self.last_change_restore_axis = restore_axis
 
     def _set_toolchange_transform(self):
@@ -744,11 +757,21 @@ class Toolchanger:
         self.gcode_move.reset_last_position()
         self.gcode.run_script_from_command("SET_GCODE_OFFSET X=0.0 Y=0.0 Z=0.0")
 
-    def _restore_state_and_transform(self, tool):
+    def _restore_state_and_transform(self, tool, destination=None):
         self.gcode_transform.tool = tool
         self.gcode_move.reset_last_position()
         self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=_toolchange_state MOVE=0")
         self.last_change_gcode_offset = None
+        if destination is not None:
+            # Keep the current post-pickup Z while travelling to the next print XY.
+            self.gcode.run_script_from_command("G90")
+            self.gcode_move.cmd_G1(self.gcode.create_gcode_command(
+                "G0", "G0", self._position_to_xyz(destination, 'xy')))
+            self.gcode_move.cmd_G1(self.gcode.create_gcode_command(
+                "G0", "G0", self._position_to_xyz(destination, 'z')))
+            if not self.last_change_absolute_coord:
+                self.gcode.run_script_from_command("G91")
+            return
         if self.last_change_restore_axis:
             self._restore_axis(self.last_change_gcode_position, self.last_change_restore_axis)
             self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=_toolchange_state MOVE=0")
