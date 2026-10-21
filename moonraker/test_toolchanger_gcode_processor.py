@@ -102,6 +102,7 @@ class ProcessorTests(unittest.TestCase):
         source = (
             "G90\n"
             "_SLICER_CHANGE NEXT_EXTRUDER=0 NEXT_TEMP=220 X=495.128 Y=166.777 Z=9\n"
+            "M106 S255\nT0\n"
             "G1 E-.4 F1800\n"
             "G1 X87.445 Y157.144 F15000\n"
             "G1 Z9\n"
@@ -114,6 +115,7 @@ class ProcessorTests(unittest.TestCase):
         source = (
             "G90\n"
             "_SLICER_CHANGE NEXT_EXTRUDER=0 NEXT_TEMP=220 X=495.128 Y=166.777 Z=9 ; switch\n"
+            "T0\n"
             "G1 Z9\n"
             "G1 X87.445 Y157.144 F15000\n"
         )
@@ -121,6 +123,16 @@ class ProcessorTests(unittest.TestCase):
         result, actual = self.run_gcode(source)
         self.assertEqual(result, (1, 0))
         self.assertEqual(actual, expected)
+
+    def test_mismatched_following_tool_command_is_ambiguous(self):
+        source = (
+            "G90\n"
+            "_SLICER_CHANGE NEXT_EXTRUDER=0 NEXT_TEMP=220 X=495.128 Y=166.777 Z=9\n"
+            "T1\nG1 X87.445 Y157.144\nG1 Z9\n"
+        )
+        result, actual = self.run_gcode(source)
+        self.assertEqual(result, (0, 1))
+        self.assertEqual(actual, source)
 
     def test_relative_z_sequence_is_left_unchanged_and_flagged(self):
         source = (

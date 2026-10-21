@@ -4,7 +4,7 @@ This optional component uses Moonraker's file-manager G-code processor registrat
 
 ## Behavior
 
-- Scans a G-code file with bounded lookahead around toolchange commands carrying `X`, `Y`, and `Z` destinations.
+- Scans a G-code file with bounded lookahead around toolchange commands carrying `X`, `Y`, and `Z` destinations. For `_SLICER_CHANGE`, it tolerates one following `Tn` only when `n` matches `NEXT_EXTRUDER`.
 - Leaves valid destinations and transitions with XY travel before the layer-Z move untouched.
 - Rewrites only an out-of-configured-range destination when it can prove an absolute, pure XY travel follows a Z descent before any extrusion or unsupported motion; it substitutes that explicit later XY target.
 - Leaves relative, combined-axis, extrusion-before-XY, missing-target, out-of-range replacement, and otherwise ambiguous transitions unchanged. It reports these as processor failures in Moonraker's log.

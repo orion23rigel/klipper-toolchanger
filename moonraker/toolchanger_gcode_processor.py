@@ -81,7 +81,8 @@ def _replace_xy(line: str, x: float, y: float) -> str:
 
 
 def _next_xy_if_recoverable(stream, start_absolute: bool, layer_z: float,
-                            max_lines: int, max_bytes: int):
+                            max_lines: int, max_bytes: int,
+                            expected_tool: Optional[int] = None):
     """Return (state, target): safe, repairable, or ambiguous.
 
     A pure XY travel before the layer-Z move is already safe. A target is only
@@ -91,6 +92,7 @@ def _next_xy_if_recoverable(stream, start_absolute: bool, layer_z: float,
     absolute = start_absolute
     descent_seen = False
     extrusion_seen = False
+    paired_tool_seen = False
     bytes_seen = 0
     for _ in range(max_lines):
         line = stream.readline()
@@ -104,6 +106,11 @@ def _next_xy_if_recoverable(stream, start_absolute: bool, layer_z: float,
             continue
         command = _command(line)
         if _is_toolchange(line):
+            if (expected_tool is not None and not paired_tool_seen
+                    and re.fullmatch(r"T\d+", command)
+                    and int(command[1:]) == expected_tool):
+                paired_tool_seen = True
+                continue
             return "ambiguous", None
         if command == "G90":
             absolute = True
@@ -173,6 +180,12 @@ def _scan(path: Path, limits: Optional[Limits], max_lines: int,
             words = _words(line)
             if limits is None or not _out_of_bounds_destination(line, limits):
                 continue
+            expected_tool = None
+            if command == "_SLICER_CHANGE":
+                try:
+                    expected_tool = int(words["NEXT_EXTRUDER"])
+                except (KeyError, ValueError):
+                    pass
             try:
                 layer_z = float(words["Z"])
             except (KeyError, ValueError):
@@ -183,7 +196,7 @@ def _scan(path: Path, limits: Optional[Limits], max_lines: int,
                 continue
             lookahead_offset = stream.tell()
             state, candidate = _next_xy_if_recoverable(
-                stream, absolute, layer_z, max_lines, max_bytes
+                stream, absolute, layer_z, max_lines, max_bytes, expected_tool
             )
             stream.seek(lookahead_offset)
             if state == "safe":
