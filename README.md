@@ -21,13 +21,15 @@ managed_services: klipper
 primary_branch: main
 ```
 
-The update manager updates the checkout but does not run `install.sh`; run the installer once to create the Klipper and Moonraker component links.
+The update manager updates the checkout but does not run `install.sh`; run the installer once to create the Klipper and Moonraker component links. In Moonraker, `install_script` is **not** a post-update command hook—it is read for system package names and is deprecated in favor of `system_dependencies`. Remove `install_script: install.sh` from this entry unless the script contains the package-list format Moonraker expects; it will not execute the installer.
 
-For a checkout that contains this fork's Moonraker processor, run the installer from that checkout:
+After updating this repository, run the installer manually when you need to create/refresh installed links or apply installation/configuration changes:
 
 ```sh
 bash ~/klipper-toolchanger/install.sh
 ```
+
+The Moonraker component is linked to the checkout, so changes to the linked component source are visible without rerunning the installer. Restart Moonraker to load source changes. Rerun the installer for new/renamed runtime files, missing or changed links, or installation/config changes; updating the installer itself does not run it. The installer also restarts services as documented below.
 
 When it finds the standard Moonraker source tree at `~/moonraker`, the installer links the optional component, backs up `~/printer_data/config/moonraker.conf` before adding a disabled config section, then restarts Klipper and Moonraker. Override `MOONRAKER_PATH`, `MOONRAKER_CONFIG`, or `MOONRAKER_SERVICE` if those paths/service names differ. It does not enable processing or invent axis bounds; verify the safe envelope and edit the section before enabling it.
 
