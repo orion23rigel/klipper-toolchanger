@@ -252,14 +252,10 @@ However, several real security concerns exist in the context of embedded device 
 #### L4: Symlink-Based Installation Could Be Abused
 
 - **Severity:** Low
-- **Location:** `install.sh`, line 44
-- **Description:** The install script creates symlinks from the extension directory to Klipper's extras directory:
-  ```bash
-  for file in "${INSTALL_PATH}"/klipper/extras/*.py; do ln -sfn "${file}" "${KLIPPER_PATH}/klippy/extras/"; done
-  ```
-  The `-f` flag forces overwriting existing symlinks. If an attacker can write to the `INSTALL_PATH` directory, they could replace the Python files, and the next install run would symlink the malicious versions.
+- **Location:** `install.sh`, `link_extension` and `link_moonraker_component`
+- **Description:** The installer creates symlinks from the checkout into Klipper's extras directory and Moonraker's components directory. Klipper links are refreshed with `ln -sfn`; the Moonraker link refuses an existing different target. In both cases, write access to `INSTALL_PATH` lets an attacker replace the Python source used by a live link.
 
-- **Risk:** If the repository is cloned to a world-writable directory, or if the user's home directory is compromised, an attacker could inject malicious code that gets symlinked into Klipper's extension directory.
+- **Risk:** If the repository is cloned to a world-writable directory, or if the user's home directory is compromised, an attacker could inject malicious code that is loaded by Klipper or Moonraker.
 
 - **Recommended Fix:** Verify file integrity after symlink creation. Consider using `cp` instead of `ln -s` for a copy-based install. Add checksum verification.
 

@@ -18,12 +18,15 @@ Moonraker v0.11.0 awaits metadata parsing before starting a print after upload-a
 
 The registration API was verified in public Moonraker v0.11.0 source on `FileManager.register_gcode_processor`. The user-reported build string `v0.11.0-3-g9e676eba` did not resolve as a commit in the public Moonraker repository, so that exact build must be checked on the printer before enabling this component. At startup, the component requires the file-manager registration method and reports a configuration failure if the API is absent.
 
-Install the module as an optional Moonraker component (adjust paths for the host's actual checkouts):
+Install the module and register it with Moonraker by running the toolchanger installer from the updated checkout:
 
 ```sh
-ln -s ~/klipper-toolchanger/moonraker/toolchanger_gcode_processor.py \
-  ~/moonraker/moonraker/components/toolchanger_gcode_processor.py
+bash ~/klipper-toolchanger/install.sh
 ```
+
+With the standard source checkout/config paths, the installer links the component into `~/moonraker/moonraker/components`, backs up `~/printer_data/config/moonraker.conf`, and adds `[toolchanger_gcode_processor]` with `enabled: False` if that section does not already exist. Set `MOONRAKER_PATH`, `MOONRAKER_CONFIG`, or `MOONRAKER_SERVICE` in the environment when the printer uses different paths or service name. The installer restarts Moonraker when the source checkout is detected.
+
+The processor intentionally remains disabled until you set and verify all four safe XY bounds and change `enabled` to `True`. Do not use the kinematic min/max values blindly: account for tool offsets and homing-origin shifts in the coordinate frame used by the slicer.
 
 Add a Moonraker config section, initially leaving it disabled:
 

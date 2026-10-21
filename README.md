@@ -7,7 +7,7 @@ An assortment of Klipper extensions that I have made while working on [Tapchange
 To install this plugin, run:
 
 ```
-curl -sL https://raw.githubusercontent.com/viesturz/klipper-toolchanger/main/install.sh -o install.sh && bash install.sh
+curl -sL https://raw.githubusercontent.com/orion23rigel/klipper-toolchanger/main/install.sh -o install.sh && bash install.sh
 ```
 
 Alternatively, use the `update_manager` to install and update automatically. Add the following to your moonraker.conf:
@@ -16,10 +16,21 @@ Alternatively, use the `update_manager` to install and update automatically. Add
 type: git_repo
 channel: dev
 path: ~/klipper-toolchanger
-origin: https://github.com/viesturz/klipper-toolchanger.git
+origin: https://github.com/orion23rigel/klipper-toolchanger.git
 managed_services: klipper
 primary_branch: main
 ```
+
+The update manager updates the checkout but does not run `install.sh`; run the installer once to create the Klipper and Moonraker component links.
+
+For a checkout that contains this fork's Moonraker processor, run the installer from that checkout:
+
+```sh
+bash ~/klipper-toolchanger/install.sh
+```
+
+When it finds the standard Moonraker source tree at `~/moonraker`, the installer links the optional component, backs up `~/printer_data/config/moonraker.conf` before adding a disabled config section, then restarts Klipper and Moonraker. Override `MOONRAKER_PATH`, `MOONRAKER_CONFIG`, or `MOONRAKER_SERVICE` if those paths/service names differ. It does not enable processing or invent axis bounds; verify the safe envelope and edit the section before enabling it.
+
 Add the [macros.cfg](/macros.cfg) to your printer config.
 
 ## Changelog
@@ -38,8 +49,7 @@ Add the [macros.cfg](/macros.cfg) to your printer config.
 
 ## Updates that add new files
 
-Note that if an update has new klipper files, they **will not** be automatically installed into Klipper.
-You will need to run the intall script manualy to add them:
+Note that new Klipper extras and Moonraker components are not automatically linked into their runtime directories by an update. Run the install script manually to create or refresh those links:
 ```commandline
 bash ~/klipper-toolchanger/install.sh
 ```
