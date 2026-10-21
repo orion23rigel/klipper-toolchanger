@@ -283,6 +283,8 @@ class ToolchangerGcodeProcessor:
 
 
 def load_component(config):
+    # Moonraker invokes this during component loading, before config validation.
+    # Parsing options here marks them consumed even if component_init runs later.
     return ToolchangerGcodeProcessor(config)
 
 

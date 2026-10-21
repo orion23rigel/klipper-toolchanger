@@ -31,14 +31,17 @@ class FakeConfig:
         self.server = FakeServer()
         self.enabled = enabled
         self.values = values or {}
+        self.read_options = []
 
     def get_server(self):
         return self.server
 
     def getboolean(self, name, default=False):
+        self.read_options.append(name)
         return self.enabled if name == "enabled" else default
 
     def getfloat(self, name, default=None, **kwargs):
+        self.read_options.append(name)
         return self.values.get(name, default)
 
     def error(self, message):
@@ -56,6 +59,9 @@ class ProcessorTests(unittest.TestCase):
         self.assertIsNotNone(file_manager.processor)
         processor = file_manager.processor or {}
         self.assertFalse(processor["enabled"])
+        self.assertIn("enabled", config.read_options)
+        self.assertIn("timeout", config.read_options)
+        self.assertEqual(processor["timeout"], 120.)
         command = shlex.split(processor["command"])
         self.assertEqual(command[-2:], ["--process", "{gcode_file_path}"])
         command[-1] = "/first/upload.gcode"

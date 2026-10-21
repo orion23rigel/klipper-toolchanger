@@ -4,15 +4,15 @@ This optional component uses Moonraker's file-manager G-code processor registrat
 
 ## Behavior
 
-- Scans a G-code file with bounded lookahead around toolchange commands carrying `X`, `Y`, and `Z` destinations. For `_SLICER_CHANGE`, it tolerates one following `Tn` only when `n` matches `NEXT_EXTRUDER`.
-- Leaves valid destinations and transitions with XY travel before the layer-Z move untouched.
-- Rewrites only an out-of-configured-range destination when it can prove an absolute, pure XY travel follows a Z descent before any extrusion or unsupported motion; it substitutes that explicit later XY target.
-- Leaves relative, combined-axis, extrusion-before-XY, missing-target, out-of-range replacement, and otherwise ambiguous transitions unchanged. It reports these as processor failures in Moonraker's log.
-- Uses atomic replacement only when a proven repair exists; safe/no-op files are not rewritten.
+When enabled, this optional Moonraker file-manager G-code processor examines uploaded files during metadata/preprint processing. Its bounded scan looks around slicer toolchange markers and may repair a narrowly proven out-of-bounds XY destination before the file is printed. It is an upload-time mitigation, not a substitute for Klipper's runtime destination guard and not a general G-code verifier.
 
-The rewrite rule is deliberately narrow, but this is **not** a general G-code verifier. The bounds supplied to this processor must be a conservative safe XY envelope in the coordinate frame used by the slicer, accounting for the configured tool offsets and homing-origin shifts. Klipper's runtime destination guard remains the final bounds check. If it skips the substituted destination, this processor cannot guarantee that a later slicer move or Z descent is safe.
+- Scans toolchange markers carrying `X`, `Y`, and `Z`; for `_SLICER_CHANGE`, it tolerates one following `Tn` only when `n` matches `NEXT_EXTRUDER`.
+- Leaves valid destinations and transitions with XY travel before the layer-Z move byte-for-byte unchanged.
+- Rewrites only an out-of-envelope toolchange destination when bounded lookahead proves an absolute Z descent followed by a pure absolute XY travel, before extrusion or unsupported/state-changing motion. The explicit subsequent XY target must itself lie inside the configured envelope; that target is substituted into the toolchange marker.
+- Leaves relative, combined-axis, extrusion-before-XY, missing-target, out-of-range replacement, and otherwise ambiguous transitions unchanged. It reports unresolved cases diagnostically; it does not reject the upload or prevent a print.
+- Applies proven edits atomically. If a file contains both resolvable and ambiguous transitions, proven repairs can still be applied while the ambiguous ones remain unchanged.
 
-Moonraker v0.11.0 awaits metadata parsing before starting a print after upload-and-print, but its processor runner logs a nonzero processor exit and continues. Therefore an ambiguous transition is not blocked: it remains unchanged, and direct upload-and-print may still start. If the same file also contains separately proven transitions, those repairs may have been applied. This follows the selected policy; it is not a print-safety interlock.
+The configured bounds must be a conservative safe XY envelope in the coordinate frame used by the slicer, accounting for tool offsets and homing-origin shifts. Klipper's runtime safe-bounds guard remains the final check. After a toolchange, coordinate state and any skipped/substituted destination can affect subsequent motion; this processor does not validate later slicer moves or guarantee safe behavior after the substitution. If the runtime guard skips a destination, this scan cannot establish that subsequent moves or Z descents are safe. Use conservative bounds and treat the processor as defense-in-depth, not a safety interlock.
 
 ## Compatibility and installation
 
