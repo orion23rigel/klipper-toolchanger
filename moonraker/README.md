@@ -16,7 +16,7 @@ The configured bounds must be a conservative safe XY envelope in the coordinate 
 
 ## Compatibility and installation
 
-The registration API was verified in public Moonraker v0.11.0 source on `FileManager.register_gcode_processor`. The user-reported build string `v0.11.0-3-g9e676eba` did not resolve as a commit in the public Moonraker repository, so that exact build must be checked on the printer before enabling this component. At startup, the component requires the file-manager registration method and reports a configuration failure if the API is absent.
+The G-code processor registration method is on Moonraker's metadata store, exposed as `file_manager.gcode_metadata.register_gcode_processor()`—not directly on the `FileManager` object. This path is present in the official `Arksine/moonraker` v0.11 source. The component and installer check for this exact API path; a missing method here indicates a different/incomplete runtime checkout or API layout.
 
 Install the module and register it with Moonraker by running the toolchanger installer from the updated checkout:
 

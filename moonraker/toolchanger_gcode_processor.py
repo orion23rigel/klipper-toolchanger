@@ -239,10 +239,13 @@ def process_file(path: os.PathLike[str] | str, limits: Optional[Limits],
 def _component_config(config) -> None:
     server = config.get_server()
     file_manager = server.load_component(config, "file_manager")
-    if not hasattr(file_manager, "register_gcode_processor"):
+    metadata_store = getattr(file_manager, "gcode_metadata", None)
+    register_processor = getattr(metadata_store, "register_gcode_processor", None)
+    if not callable(register_processor):
         raise config.error(
-            "Moonraker file manager lacks register_gcode_processor; "
-            "this component requires the v0.11 processor API"
+            "Moonraker file manager lacks "
+            "gcode_metadata.register_gcode_processor; "
+            "this component requires the G-code metadata processor API"
         )
     enabled = config.getboolean("enabled", False)
     limits = {name: config.getfloat(name, None) for name in
@@ -262,7 +265,7 @@ def _component_config(config) -> None:
         for name, value in limits.items():
             cli_args.extend((f"--{name.replace('_', '-')}", str(value)))
     command = " ".join(shlex.quote(arg) for arg in cli_args)
-    file_manager.register_gcode_processor("toolchanger_destination", {
+    register_processor("toolchanger_destination", {
         "name": "toolchanger_destination",
         "version": VERSION,
         "command": command,

@@ -7,7 +7,7 @@ from pathlib import Path
 from moonraker.toolchanger_gcode_processor import Limits, load_component, process_file
 
 
-class FakeFileManager:
+class FakeMetadataStore:
     def __init__(self):
         self.name = None
         self.processor = None
@@ -15,6 +15,11 @@ class FakeFileManager:
     def register_gcode_processor(self, name, processor):
         self.name = name
         self.processor = processor
+
+
+class FakeFileManager:
+    def __init__(self):
+        self.gcode_metadata = FakeMetadataStore()
 
 
 class FakeServer:
@@ -53,11 +58,11 @@ class ProcessorTests(unittest.TestCase):
 
     def test_component_registers_disabled_by_default_and_has_lifecycle_methods(self):
         config = FakeConfig()
-        file_manager = config.server.file_manager
+        metadata_store = config.server.file_manager.gcode_metadata
         component = load_component(config)
-        self.assertEqual(file_manager.name, "toolchanger_destination")
-        self.assertIsNotNone(file_manager.processor)
-        processor = file_manager.processor or {}
+        self.assertEqual(metadata_store.name, "toolchanger_destination")
+        self.assertIsNotNone(metadata_store.processor)
+        processor = metadata_store.processor or {}
         self.assertFalse(processor["enabled"])
         self.assertIn("enabled", config.read_options)
         self.assertIn("timeout", config.read_options)
@@ -65,17 +70,23 @@ class ProcessorTests(unittest.TestCase):
         command = shlex.split(processor["command"])
         self.assertEqual(command[-2:], ["--process", "{gcode_file_path}"])
         command[-1] = "/first/upload.gcode"
-        self.assertIn("{gcode_file_path}", shlex.split(processor["command"]))
+        self.assertIn("{gcode_file_path}", shlex.split((metadata_store.processor or {})["command"]))
         component.component_init()
         component.close()
+
+    def test_component_rejects_missing_metadata_processor_api(self):
+        config = FakeConfig()
+        del config.server.file_manager.gcode_metadata
+        with self.assertRaisesRegex(ValueError, "gcode_metadata.register_gcode_processor"):
+            load_component(config)
 
     def test_registered_subprocess_command_processes_multiple_files(self):
         config = FakeConfig(enabled=True, values={
             "x_min": 0., "x_max": 350., "y_min": 0., "y_max": 350.
         })
         load_component(config)
-        processor = config.server.file_manager.processor or {}
-        command_template = shlex.split(processor["command"])
+        metadata_store = config.server.file_manager.gcode_metadata
+        command_template = shlex.split((metadata_store.processor or {})["command"])
         source = (
             "G90\n"
             "_SLICER_CHANGE NEXT_EXTRUDER=0 NEXT_TEMP=220 X=495.128 Y=166.777 Z=9\n"
@@ -91,7 +102,7 @@ class ProcessorTests(unittest.TestCase):
                 result = subprocess.run(command, capture_output=True, check=False)
                 self.assertEqual(result.returncode, 0, result.stderr.decode())
                 self.assertEqual(path.read_text(), expected)
-        self.assertIn("{gcode_file_path}", shlex.split(processor["command"]))
+        self.assertIn("{gcode_file_path}", shlex.split((metadata_store.processor or {})["command"]))
 
     def test_enabling_requires_explicit_axis_envelope(self):
         with self.assertRaisesRegex(ValueError, "requires x_min"):

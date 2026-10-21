@@ -77,9 +77,11 @@ function link_moonraker_component {
     fi
 
     file_manager_source="${components_dir}/file_manager/file_manager.py"
-    if [ ! -f "${file_manager_source}" ] || ! grep -q '^[[:space:]]*def register_gcode_processor' "${file_manager_source}"; then
-        echo "[ERROR] Moonraker file-manager processor API was not found at '${file_manager_source}'."
-        echo "This component requires a Moonraker source version with register_gcode_processor()."
+    if [ ! -f "${file_manager_source}" ] \
+            || ! grep -q '^[[:space:]]*def register_gcode_processor' "${file_manager_source}" \
+            || ! grep -q 'self[.]gcode_metadata[[:space:]]*=[[:space:]]*MetadataStorage' "${file_manager_source}"; then
+        echo "[ERROR] Moonraker file-manager metadata processor API was not found at '${file_manager_source}'."
+        echo "This component requires file_manager.gcode_metadata.register_gcode_processor()."
         exit 1
     fi
 
