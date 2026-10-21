@@ -43,7 +43,7 @@ class ToolchangeDestinationTest(unittest.TestCase):
             toolchanger.Toolchanger._get_toolchange_destination(
                 object.__new__(toolchanger.Toolchanger), FakeGcmd({})))
 
-    def test_destination_moves_xy_before_z_and_restores_relative_mode(self):
+    def test_destination_moves_xy_without_descending_and_restores_relative_mode(self):
         tc = object.__new__(toolchanger.Toolchanger)
         tc.gcode_transform = types.SimpleNamespace(tool=None)
         tc.gcode = Mock()
@@ -62,8 +62,9 @@ class ToolchangeDestinationTest(unittest.TestCase):
         self.assertEqual(commands[0], "RESTORE_GCODE_STATE NAME=_toolchange_state MOVE=0")
         self.assertEqual(commands[1], "G90")
         self.assertEqual(commands[2][2], {"X": 41.0, "Y": 82.0})
-        self.assertEqual(commands[3][2], {"Z": 0.25})
-        self.assertEqual(commands[4], "G91")
+        self.assertEqual(commands[3], "G91")
+        self.assertFalse(any(isinstance(command, tuple) and "Z" in command[2]
+                             for command in commands))
         self.assertIsNone(tc.last_change_gcode_offset)
 
     def test_no_destination_keeps_existing_axis_restore_behavior(self):

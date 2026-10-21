@@ -763,12 +763,13 @@ class Toolchanger:
         self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=_toolchange_state MOVE=0")
         self.last_change_gcode_offset = None
         if destination is not None:
-            # Keep the current post-pickup Z while travelling to the next print XY.
+            # Keep the post-pickup Z through XY travel. The slicer emits its
+            # own move to the actual print XY followed by the destination Z;
+            # descending here would make that subsequent XY move scrape at
+            # print height.
             self.gcode.run_script_from_command("G90")
             self.gcode_move.cmd_G1(self.gcode.create_gcode_command(
                 "G0", "G0", self._position_to_xyz(destination, 'xy')))
-            self.gcode_move.cmd_G1(self.gcode.create_gcode_command(
-                "G0", "G0", self._position_to_xyz(destination, 'z')))
             if not self.last_change_absolute_coord:
                 self.gcode.run_script_from_command("G91")
             return
