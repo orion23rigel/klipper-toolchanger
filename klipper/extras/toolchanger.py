@@ -711,6 +711,26 @@ class Toolchanger:
             result[INDEX_TO_XYZ[index]] = position[index]
         return result
 
+    def _destination_bounds_error(self, destination, tool):
+        """Return a reason to skip an XY destination that cannot be validated."""
+        toolhead = self.printer.lookup_object('toolhead')
+        curtime = self.printer.get_reactor().monotonic()
+        kin_status = toolhead.get_kinematics().get_status(curtime)
+        if 'axis_minimum' not in kin_status or 'axis_maximum' not in kin_status:
+            return "kinematics does not expose Cartesian axis limits"
+
+        gcode_status = self.gcode_move.get_status()
+        homing_origin = gcode_status.get('homing_origin', [0., 0., 0.])
+        offsets = [tool.gcode_x_offset, tool.gcode_y_offset]
+        for axis, index in (('X', 0), ('Y', 1)):
+            target = destination[index] + homing_origin[index] + offsets[index]
+            minimum = kin_status['axis_minimum'][index]
+            maximum = kin_status['axis_maximum'][index]
+            if target < minimum or target > maximum:
+                return ("%s target %.3f is outside configured range %.3f..%.3f"
+                        % (axis, target, minimum, maximum))
+        return None
+
     # Position with tool transforms applied. To be used while toolchanging to get a gcode position.
     def _position_with_tool_offset(self, position, tool):
         if len(position) < 3:
@@ -763,6 +783,14 @@ class Toolchanger:
         self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=_toolchange_state MOVE=0")
         self.last_change_gcode_offset = None
         if destination is not None:
+            bounds_error = self._destination_bounds_error(destination, tool)
+            if bounds_error:
+                self.gcode.respond_info(
+                    "Toolchanger: skipping slicer destination move: %s" %
+                    (bounds_error,))
+                if not self.last_change_absolute_coord:
+                    self.gcode.run_script_from_command("G91")
+                return
             # Keep the post-pickup Z through XY travel. The slicer emits its
             # own move to the actual print XY followed by the destination Z;
             # descending here would make that subsequent XY move scrape at
