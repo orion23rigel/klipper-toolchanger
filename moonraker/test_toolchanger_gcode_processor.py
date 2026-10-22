@@ -1,10 +1,13 @@
+import asyncio
 import shlex
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from moonraker.toolchanger_gcode_processor import Limits, load_component, process_file
+from moonraker.toolchanger_gcode_processor import (
+    Limits, derive_auto_limits, load_component, process_file,
+)
 
 
 class FakeMetadataStore:
@@ -25,10 +28,36 @@ class FakeFileManager:
 class FakeServer:
     def __init__(self):
         self.file_manager = FakeFileManager()
+        self.klippy_apis = FakeKlippyApi()
+        self.handlers = {}
 
     def load_component(self, config, name):
         assert name == "file_manager"
         return self.file_manager
+
+    def lookup_component(self, name):
+        assert name == "klippy_apis"
+        return self.klippy_apis
+
+    def register_event_handler(self, event, callback):
+        self.handlers[event] = callback
+
+
+class FakeKlippyApi:
+    def __init__(self):
+        self.result = {
+            "configfile": {"config": {
+                "stepper_x": {"position_min": "-2", "position_max": "350"},
+                "stepper_y": {"position_min": "-4", "position_max": "357"},
+                "toolchanger": {},
+                "tool T0": {"gcode_x_offset": "1", "gcode_y_offset": "-1"},
+                "tool T1": {"gcode_x_offset": "-2", "gcode_y_offset": "0.5"},
+            }},
+            "gcode_move": {"homing_origin": [0.25, -0.5, 0.]},
+        }
+
+    async def query_objects(self, objects):
+        return self.result
 
 
 class FakeConfig:
@@ -60,6 +89,9 @@ class ProcessorTests(unittest.TestCase):
         config = FakeConfig()
         metadata_store = config.server.file_manager.gcode_metadata
         component = load_component(config)
+        self.assertIsNone(metadata_store.processor)
+        component.component_init()
+        asyncio.run(component._on_klippy_ready())
         self.assertEqual(metadata_store.name, "toolchanger_destination")
         self.assertIsNotNone(metadata_store.processor)
         processor = metadata_store.processor or {}
@@ -68,11 +100,49 @@ class ProcessorTests(unittest.TestCase):
         self.assertIn("timeout", config.read_options)
         self.assertEqual(processor["timeout"], 120.)
         command = shlex.split(processor["command"])
-        self.assertEqual(command[-2:], ["--process", "{gcode_file_path}"])
+        self.assertEqual(command[2:4], ["--process", "{gcode_file_path}"])
         command[-1] = "/first/upload.gcode"
         self.assertIn("{gcode_file_path}", shlex.split((metadata_store.processor or {})["command"]))
-        component.component_init()
         component.close()
+
+    def test_enabled_processor_registers_after_auto_bounds_are_derived(self):
+        config = FakeConfig(enabled=True)
+        component = load_component(config)
+        component.component_init()
+        asyncio.run(component._on_klippy_ready())
+        processor = config.server.file_manager.gcode_metadata.processor or {}
+        self.assertTrue(processor["enabled"])
+
+    def test_auto_bounds_intersect_tool_offsets_and_homing_origin(self):
+        config = {
+            "stepper_x": {"position_min": "-2", "position_max": "350"},
+            "stepper_y": {"position_min": "-4", "position_max": "357"},
+            "toolchanger": {},
+            "tool T0": {"gcode_x_offset": "1", "gcode_y_offset": "-1"},
+            "tool T1": {"gcode_x_offset": "-2", "gcode_y_offset": "0.5"},
+        }
+        limits = derive_auto_limits(config, [0.25, -0.5, 0.])
+        self.assertEqual(limits, Limits(-0.25, 348.75, -2.5, 357.0))
+
+    def test_auto_bounds_use_parent_toolchanger_offset_defaults(self):
+        config = {
+            "stepper_x": {"position_min": "0", "position_max": "100"},
+            "stepper_y": {"position_min": "0", "position_max": "100"},
+            "toolchanger": {"gcode_x_offset": "2", "gcode_y_offset": "-3"},
+            "tool T0": {},
+        }
+        self.assertEqual(derive_auto_limits(config, [0., 0., 0.]),
+                         Limits(-2., 98., 3., 103.))
+
+    def test_auto_bounds_reject_empty_intersection(self):
+        config = {
+            "stepper_x": {"position_min": "0", "position_max": "10"},
+            "stepper_y": {"position_min": "0", "position_max": "10"},
+            "tool T0": {"gcode_x_offset": "0"},
+            "tool T1": {"gcode_x_offset": "20"},
+        }
+        with self.assertRaisesRegex(ValueError, "no shared safe XY envelope"):
+            derive_auto_limits(config, [0., 0., 0.])
 
     def test_component_rejects_missing_metadata_processor_api(self):
         config = FakeConfig()
@@ -104,9 +174,12 @@ class ProcessorTests(unittest.TestCase):
                 self.assertEqual(path.read_text(), expected)
         self.assertIn("{gcode_file_path}", shlex.split((metadata_store.processor or {})["command"]))
 
-    def test_enabling_requires_explicit_axis_envelope(self):
-        with self.assertRaisesRegex(ValueError, "requires x_min"):
-            load_component(FakeConfig(enabled=True))
+    def test_auto_bounds_missing_config_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, r"no active \[tool Tn\]"):
+            derive_auto_limits({
+                "stepper_x": {"position_min": "0", "position_max": "100"},
+                "stepper_y": {"position_min": "0", "position_max": "100"},
+            }, [0., 0., 0.])
 
     def run_gcode(self, text):
         with tempfile.TemporaryDirectory() as directory:

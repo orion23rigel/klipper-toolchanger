@@ -31,7 +31,7 @@ bash ~/klipper-toolchanger/install.sh
 
 The Moonraker component is linked to the checkout, so changes to the linked component source are visible without rerunning the installer. Restart Moonraker to load source changes. Rerun the installer for new/renamed runtime files, missing or changed links, or installation/config changes; updating the installer itself does not run it. The installer also restarts services as documented below.
 
-When it finds the standard Moonraker source tree at `~/moonraker`, the installer links the optional component, backs up `~/printer_data/config/moonraker.conf` before adding a disabled config section, then restarts Klipper and Moonraker. Override `MOONRAKER_PATH`, `MOONRAKER_CONFIG`, or `MOONRAKER_SERVICE` if those paths/service names differ. It does not enable processing or invent axis bounds; verify the safe envelope and edit the section before enabling it.
+When it finds the standard Moonraker source tree at `~/moonraker`, the installer links the optional component, backs up `~/printer_data/config/moonraker.conf` before adding a disabled config section, then restarts Klipper and Moonraker. Override `MOONRAKER_PATH`, `MOONRAKER_CONFIG`, or `MOONRAKER_SERVICE` if those paths/service names differ. Processing remains disabled by default. With no manual bounds, the component derives a shared XY envelope from Klipper's active axis limits, configured tool offsets, and XY homing origin when Klipper reports ready. Verify the logged result before enabling. Optional manual bounds override auto-derivation when all four are provided.
 
 ## Toolchange destination handling
 
@@ -40,7 +40,7 @@ Toolchange destination handling has two complementary parts:
 - **Klipper runtime guard and post-change positioning:** when slicer-supplied post-toolchange X/Y/Z coordinates are restored, the toolchanger checks the XY target against the active kinematics limits, homing origin, and selected tool's XY offsets. If it cannot verify the target is in range, it skips that optional destination move and reports why. For a valid destination it moves to XY while retaining the post-pickup Z, leaving the slicer's following moves to handle the actual print XY and Z descent. It restores relative coordinate mode when needed. This does not validate later independent slicer moves.
 - **Optional Moonraker pre-print scan:** the component can inspect uploaded G-code and repair only an out-of-envelope toolchange destination when bounded lookahead proves a safe later XY target before extrusion or unsupported motion. Ambiguous transitions are left unchanged; Moonraker's processor is not a print interlock. See [Moonraker processor behavior, limits, and installation](moonraker/README.md).
 
-Keep the Moonraker processor disabled until all four bounds are set and verified in the slicer's coordinate frame, accounting for tool offsets and homing-origin shifts. The Klipper runtime guard remains the final check.
+Keep the Moonraker processor disabled until the automatically derived envelope is verified in the slicer's coordinate frame, accounting for active tool offsets and XY homing origin; alternatively, set all four manual bounds explicitly. Auto bounds are refreshed when Klipper reports ready, not on later runtime offset changes. If macros alter XY homing origin or tool offsets after that, do not rely on the derived envelope; use a verified manual envelope or keep processing disabled. Klipper's runtime guard remains the final check, and the processor is not a print interlock.
 
 Add the [macros.cfg](/macros.cfg) to your printer config.
 

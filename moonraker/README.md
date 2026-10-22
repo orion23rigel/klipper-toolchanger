@@ -12,7 +12,9 @@ When enabled, this optional Moonraker file-manager G-code processor examines upl
 - Leaves relative, combined-axis, extrusion-before-XY, missing-target, out-of-range replacement, and otherwise ambiguous transitions unchanged. It reports unresolved cases diagnostically; it does not reject the upload or prevent a print.
 - Applies proven edits atomically. If a file contains both resolvable and ambiguous transitions, proven repairs can still be applied while the ambiguous ones remain unchanged.
 
-The configured bounds must be a conservative safe XY envelope in the coordinate frame used by the slicer, accounting for tool offsets and homing-origin shifts. Klipper's runtime safe-bounds guard remains the final check. After a toolchange, coordinate state and any skipped/substituted destination can affect subsequent motion; this processor does not validate later slicer moves or guarantee safe behavior after the substitution. If the runtime guard skips a destination, this scan cannot establish that subsequent moves or Z descents are safe. Use conservative bounds and treat the processor as defense-in-depth, not a safety interlock.
+By default, bounds are derived when Klipper reports ready. Moonraker queries Klipper's active `configfile.config` for `[stepper_x]`/`[stepper_y]` limits and every `[tool Tn]` section, applying each tool's `gcode_x_offset`/`gcode_y_offset` or its parent toolchanger's defaults. It also incorporates the current XY `gcode_move.homing_origin`. The component intersects the per-tool slicer-space intervals so every configured tool fits the envelope. Auto bounds are refreshed on each Klipper-ready event; runtime changes to offsets or homing origin are not tracked. If such changes are used, supply a verified manual envelope or leave processing disabled.
+
+Klipper's runtime safe-bounds guard remains the final check. The preprint scan does not validate later slicer moves or guarantee safe behavior after a substituted or skipped destination. Use this as defense-in-depth, not as a safety interlock.
 
 ## Compatibility and installation
 
@@ -26,22 +28,20 @@ bash ~/klipper-toolchanger/install.sh
 
 With the standard source checkout/config paths, the installer links the component into `~/moonraker/moonraker/components`, backs up `~/printer_data/config/moonraker.conf`, and adds `[toolchanger_gcode_processor]` with `enabled: False` if that section does not already exist. Set `MOONRAKER_PATH`, `MOONRAKER_CONFIG`, or `MOONRAKER_SERVICE` in the environment when the printer uses different paths or service name. The installer restarts Moonraker when the source checkout is detected.
 
-The processor intentionally remains disabled until you set and verify all four safe XY bounds and change `enabled` to `True`. Do not use the kinematic min/max values blindly: account for tool offsets and homing-origin shifts in the coordinate frame used by the slicer.
-
-Add a Moonraker config section, initially leaving it disabled:
+The processor intentionally remains disabled until you verify the automatically derived safe XY envelope and change `enabled` to `True`. On Klipper-ready, the Moonraker log reports the computed bounds. If deriving bounds fails (missing axes/tools/origin, invalid values, or no shared envelope), the processor remains unregistered and logs an error; this does not prevent printing. Alternatively, set all four `x_min`, `x_max`, `y_min`, and `y_max` values to use a manual slicer-space envelope. Partial manual overrides are rejected.
 
 ```ini
 [toolchanger_gcode_processor]
 enabled: False
-# Before enabling, set all four bounds to a conservative safe XY envelope.
+timeout: 120
+# Optional: set all four values to override automatic derivation.
 # x_min: ...
 # x_max: ...
 # y_min: ...
 # y_max: ...
-timeout: 120
 ```
 
-Only enable after verifying the bounds against the active printer configuration, tool offsets, homing origin, and representative sliced files. If enabled, all four bounds are required and each minimum must be below its maximum. Then restart Moonraker and verify that its log reports `GCode Processor toolchanger_destination registered`.
+The derived envelope uses the XY homing origin at the time Klipper reports ready. If any macro changes XY homing origin or tool offsets later, automatic bounds become stale; use a manually verified envelope or keep the processor disabled. Even with valid bounds, ambiguous scan transitions are left unchanged and do not block a print.
 
 ## Local tests
 

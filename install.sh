@@ -115,7 +115,7 @@ function link_moonraker_component {
     else
         backup="${MOONRAKER_CONFIG}.bak.$(date +%Y%m%d%H%M%S)"
         cp -p "${MOONRAKER_CONFIG}" "${backup}"
-        printf '%s\n' '' '[toolchanger_gcode_processor]' 'enabled: False' 'timeout: 120' '# Set these to a verified safe slicer-coordinate envelope before enabling:' '# x_min: ...' '# x_max: ...' '# y_min: ...' '# y_max: ...' >> "${MOONRAKER_CONFIG}"
+        printf '%s\n' '' '[toolchanger_gcode_processor]' 'enabled: False' 'timeout: 120' '# Bounds auto-derive from Klipper axis limits, tool offsets, and XY homing origin.' '# Optional manual override: set all four values (or leave all commented for auto):' '# x_min: ...' '# x_max: ...' '# y_min: ...' '# y_max: ...' >> "${MOONRAKER_CONFIG}"
         echo "[CONFIG] Added disabled processor section; backup: ${backup}"
     fi
     MOONRAKER_COMPONENT_INSTALLED=1

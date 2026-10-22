@@ -11,6 +11,7 @@ All other files/transitions are left byte-for-byte unchanged.
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 import os
 import re
@@ -19,7 +20,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 VERSION = "0.1.0"
 _WORD_RE = re.compile(r"(?<!\S)([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^\s;]+)")
@@ -236,7 +237,63 @@ def process_file(path: os.PathLike[str] | str, limits: Optional[Limits],
     return len(replacements), int(unresolved)
 
 
-def _component_config(config) -> None:
+def derive_auto_limits(config: Dict[str, Dict[str, str]],
+                       homing_origin) -> Limits:
+    """Derive a slicer-space envelope safe for every configured tool.
+
+    Klipper checks a destination after adding the current homing origin and the
+    selected tool's XY G-code offset. Intersect the corresponding slicer-space
+    intervals across all configured tool sections.
+    """
+    try:
+        x_cfg, y_cfg = config["stepper_x"], config["stepper_y"]
+        x_min = float(x_cfg.get("position_min", 0.0))
+        x_max = float(x_cfg["position_max"])
+        y_min = float(y_cfg.get("position_min", 0.0))
+        y_max = float(y_cfg["position_max"])
+        origin_x, origin_y = float(homing_origin[0]), float(homing_origin[1])
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ValueError(f"incomplete XY limits or homing origin: {exc}") from exc
+
+    base_limits = (x_min, x_max, y_min, y_max, origin_x, origin_y)
+    if not all(math.isfinite(value) for value in base_limits):
+        raise ValueError("XY limits and homing origin must be finite")
+    if x_min >= x_max or y_min >= y_max:
+        raise ValueError("axis minimums must be less than their maximums")
+
+    tool_sections = {
+        name: section for name, section in config.items()
+        if re.fullmatch(r"tool\s+T\d+", name, re.IGNORECASE)
+    }
+    if not tool_sections:
+        raise ValueError("no active [tool Tn] sections found in Klipper config")
+
+    safe_x_min, safe_x_max = float("-inf"), float("inf")
+    safe_y_min, safe_y_max = float("-inf"), float("inf")
+    for name, tool in tool_sections.items():
+        parent_name = tool.get("toolchanger", "toolchanger")
+        parent = config.get(parent_name, {})
+        try:
+            offset_x = float(tool.get(
+                "gcode_x_offset", parent.get("gcode_x_offset", 0.0)))
+            offset_y = float(tool.get(
+                "gcode_y_offset", parent.get("gcode_y_offset", 0.0)))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid XY offset in [{name}]: {exc}") from exc
+        if not math.isfinite(offset_x) or not math.isfinite(offset_y):
+            raise ValueError(f"non-finite XY offset in [{name}]")
+
+        safe_x_min = max(safe_x_min, x_min - origin_x - offset_x)
+        safe_x_max = min(safe_x_max, x_max - origin_x - offset_x)
+        safe_y_min = max(safe_y_min, y_min - origin_y - offset_y)
+        safe_y_max = min(safe_y_max, y_max - origin_y - offset_y)
+
+    if safe_x_min >= safe_x_max or safe_y_min >= safe_y_max:
+        raise ValueError("configured tool offsets leave no shared safe XY envelope")
+    return Limits(safe_x_min, safe_x_max, safe_y_min, safe_y_max)
+
+
+def _component_config(config):
     server = config.get_server()
     file_manager = server.load_component(config, "file_manager")
     metadata_store = getattr(file_manager, "gcode_metadata", None)
@@ -248,41 +305,98 @@ def _component_config(config) -> None:
             "this component requires the G-code metadata processor API"
         )
     enabled = config.getboolean("enabled", False)
-    limits = {name: config.getfloat(name, None) for name in
-              ("x_min", "x_max", "y_min", "y_max")}
-    if enabled and any(value is None for value in limits.values()):
-        raise config.error(
-            "enabled processing requires x_min, x_max, y_min, and y_max"
-        )
-    if enabled and not all(math.isfinite(value) for value in limits.values()):
-        raise config.error("axis bounds must be finite numbers")
-    if enabled and (limits["x_min"] >= limits["x_max"] or
-                    limits["y_min"] >= limits["y_max"]):
-        raise config.error("axis minimums must be less than their maximums")
-    cli_args = [sys.executable, str(Path(__file__).resolve()), "--process",
-                "{gcode_file_path}"]
-    if all(value is not None for value in limits.values()):
-        for name, value in limits.items():
-            cli_args.extend((f"--{name.replace('_', '-')}", str(value)))
-    command = " ".join(shlex.quote(arg) for arg in cli_args)
-    register_processor("toolchanger_destination", {
-        "name": "toolchanger_destination",
-        "version": VERSION,
-        "command": command,
-        "timeout": config.getfloat("timeout", 120., above=0.),
-        "enabled": enabled,
-    })
+    raw_limits = {name: config.getfloat(name, None) for name in
+                  ("x_min", "x_max", "y_min", "y_max")}
+    if any(value is not None for value in raw_limits.values()):
+        if any(value is None for value in raw_limits.values()):
+            raise config.error("manual bounds require all four XY values")
+        if not all(math.isfinite(value) for value in raw_limits.values()):
+            raise config.error("axis bounds must be finite numbers")
+        if (raw_limits["x_min"] >= raw_limits["x_max"] or
+                raw_limits["y_min"] >= raw_limits["y_max"]):
+            raise config.error("axis minimums must be less than their maximums")
+        limits = Limits(raw_limits["x_min"], raw_limits["x_max"],
+                        raw_limits["y_min"], raw_limits["y_max"])
+    else:
+        limits = None
+    timeout = config.getfloat("timeout", 120., above=0.)
+    return server, metadata_store, enabled, timeout, limits
 
 
 class ToolchangerGcodeProcessor:
     def __init__(self, config):
-        _component_config(config)
+        (self.server, self.metadata_store, self.enabled,
+         self.timeout, self.manual_limits) = _component_config(config)
+        self.metadata_store: Any
+        self.klippy_apis: Any = None
+        self.registered = False
+        if self.manual_limits is not None:
+            self._register_processor(self.manual_limits)
+
+    def _register_processor(self, limits: Limits) -> None:
+        if self.registered:
+            self.metadata_store.register_gcode_processor(
+                "toolchanger_destination", None)
+        cli_args = [sys.executable, str(Path(__file__).resolve()), "--process",
+                    "{gcode_file_path}"]
+        for name, value in (("x_min", limits.x_min), ("x_max", limits.x_max),
+                            ("y_min", limits.y_min), ("y_max", limits.y_max)):
+            cli_args.extend((f"--{name.replace('_', '-')}", str(value)))
+        command = " ".join(shlex.quote(arg) for arg in cli_args)
+        self.metadata_store.register_gcode_processor("toolchanger_destination", {
+            "name": "toolchanger_destination",
+            "version": VERSION,
+            "command": command,
+            "timeout": self.timeout,
+            "enabled": self.enabled,
+        })
+        self.registered = True
+
+    async def _on_klippy_ready(self) -> None:
+        if self.manual_limits is not None:
+            return
+        if self.registered:
+            self.metadata_store.register_gcode_processor(
+                "toolchanger_destination", None)
+            self.registered = False
+        try:
+            result = await self.klippy_apis.query_objects({
+                "configfile": None,
+                "gcode_move": ["homing_origin"],
+            })
+            printer_config = result["configfile"]["config"]
+            origin = result["gcode_move"]["homing_origin"]
+            limits = derive_auto_limits(printer_config, origin)
+        except Exception as exc:
+            logging.exception(
+                "Unable to derive automatic toolchanger G-code processor bounds; "
+                "processor remains unregistered: %s", exc)
+            return
+        self._register_processor(limits)
+        logging.info(
+            "Automatic toolchanger processor bounds from Klipper config: "
+            "X %.3f..%.3f, Y %.3f..%.3f",
+            limits.x_min, limits.x_max, limits.y_min, limits.y_max)
+
+    def _on_klippy_shutdown(self) -> None:
+        if self.manual_limits is None and self.registered:
+            self.metadata_store.register_gcode_processor(
+                "toolchanger_destination", None)
+            self.registered = False
 
     def component_init(self):
-        pass
+        if self.manual_limits is not None:
+            return
+        self.klippy_apis = self.server.lookup_component("klippy_apis")
+        self.server.register_event_handler(
+            "server:klippy_ready", self._on_klippy_ready)
+        self.server.register_event_handler(
+            "server:klippy_shutdown", self._on_klippy_shutdown)
+        self.server.register_event_handler(
+            "server:klippy_disconnect", self._on_klippy_shutdown)
 
     def close(self):
-        pass
+        self._on_klippy_shutdown()
 
 
 def load_component(config):
